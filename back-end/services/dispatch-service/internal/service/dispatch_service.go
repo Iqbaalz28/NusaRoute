@@ -1,0 +1,166 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"math"
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/nusaroute/pkg/events"
+	"github.com/nusaroute/pkg/kafka"
+	"github.com/nusaroute/services/dispatch-service/internal/model"
+	"github.com/nusaroute/services/dispatch-service/internal/repository"
+)
+
+type DispatchService interface {
+	AutoAssign(ctx context.Context, orderID, awb string, pickupLat, pickupLng float64, pickupAddr string) error
+	ManualAssign(ctx context.Context, req model.ManualAssignRequest) error
+	ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error)
+	RunNoShowMonitor(ctx context.Context)
+}
+
+type dispatchService struct {
+	repo            repository.DispatchRepository
+	producer        *kafka.Producer
+	courierSvcURL   string
+}
+
+func NewDispatchService(repo repository.DispatchRepository, producer *kafka.Producer, courierSvcURL string) DispatchService {
+	return &dispatchService{repo: repo, producer: producer, courierSvcURL: courierSvcURL}
+}
+
+// CourierInfo represents the courier data returned from Courier Service API.
+type CourierInfo struct {
+	ID       string  `json:"id"`
+	FullName string  `json:"full_name"`
+	Phone    string  `json:"phone"`
+	Lat      float64 `json:"current_lat"`
+	Lng      float64 `json:"current_lng"`
+}
+
+// AutoAssign implements a simplified VRP: find nearest available courier to pickup point.
+func (s *dispatchService) AutoAssign(ctx context.Context, orderID, awb string, pickupLat, pickupLng float64, pickupAddr string) error {
+	// Call Courier Service to get available couriers near pickup location
+	couriers, err := s.fetchAvailableCouriers(pickupLat, pickupLng, 15.0) // 15km radius
+	if err != nil || len(couriers) == 0 {
+		log.Printf("[Dispatch] No available couriers near (%.4f, %.4f) for order %s", pickupLat, pickupLng, orderID)
+		return fmt.Errorf("no available couriers found")
+	}
+
+	// VRP: Select nearest courier (greedy nearest-neighbor algorithm)
+	bestCourier := couriers[0]
+	bestDist := haversine(pickupLat, pickupLng, bestCourier.Lat, bestCourier.Lng)
+	for _, c := range couriers[1:] {
+		dist := haversine(pickupLat, pickupLng, c.Lat, c.Lng)
+		if dist < bestDist {
+			bestDist = dist
+			bestCourier = c
+		}
+	}
+
+	// Create assignment
+	assignment := &model.Assignment{
+		OrderID: orderID, AWB: awb,
+		CourierID: bestCourier.ID, CourierName: bestCourier.FullName,
+		PickupLat: pickupLat, PickupLng: pickupLng, PickupAddr: pickupAddr,
+	}
+	if err := s.repo.CreateAssignment(ctx, assignment); err != nil {
+		return fmt.Errorf("failed to create assignment: %w", err)
+	}
+
+	// Publish CourierAssigned event
+	event := events.CourierAssignedEvent{
+		BaseEvent: events.BaseEvent{
+			EventID: uuid.New().String(), EventType: events.TopicCourierAssigned,
+			Timestamp: time.Now(), Source: "dispatch-service",
+		},
+		OrderID: orderID, AWB: awb,
+		CourierID: bestCourier.ID, CourierName: bestCourier.FullName,
+		CourierPhone: bestCourier.Phone,
+		EstimatedPickupTime: time.Now().Add(30 * time.Minute),
+	}
+	s.producer.Publish(ctx, events.TopicCourierAssigned, orderID, event)
+
+	log.Printf("[Dispatch] ✅ Assigned courier %s (%.1fkm away) to order %s", bestCourier.FullName, bestDist, orderID)
+	return nil
+}
+
+func (s *dispatchService) ManualAssign(ctx context.Context, req model.ManualAssignRequest) error {
+	assignment := &model.Assignment{
+		OrderID: req.OrderID, CourierID: req.CourierID,
+	}
+	return s.repo.CreateAssignment(ctx, assignment)
+}
+
+func (s *dispatchService) ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error) {
+	if page < 1 { page = 1 }
+	if perPage < 1 { perPage = 20 }
+	return s.repo.ListAssignments(ctx, status, page, perPage)
+}
+
+// RunNoShowMonitor checks for couriers who haven't picked up within 2 hours and reassigns.
+func (s *dispatchService) RunNoShowMonitor(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done(): return
+		case <-ticker.C:
+			noShows, err := s.repo.GetNoShowAssignments(ctx, 2*time.Hour)
+			if err != nil { log.Printf("[Dispatch] NoShow check error: %v", err); continue }
+
+			for _, a := range noShows {
+				log.Printf("[Dispatch] ⚠️ Courier %s no-show for order %s, reassigning...", a.CourierID, a.OrderID)
+				s.repo.UpdateStatus(ctx, a.ID, model.AssignmentStatusNoShow)
+
+				// Try to reassign to another courier
+				err := s.AutoAssign(ctx, a.OrderID, a.AWB, a.PickupLat, a.PickupLng, a.PickupAddr)
+				if err != nil {
+					log.Printf("[Dispatch] Failed to reassign order %s: %v", a.OrderID, err)
+					continue
+				}
+
+				event := events.CourierReassignedEvent{
+					BaseEvent: events.BaseEvent{
+						EventID: uuid.New().String(), EventType: events.TopicCourierReassigned,
+						Timestamp: time.Now(), Source: "dispatch-service",
+					},
+					OrderID: a.OrderID, OldCourierID: a.CourierID,
+					Reason: "No-show: courier did not pick up within 2 hours",
+				}
+				s.producer.Publish(ctx, events.TopicCourierReassigned, a.OrderID, event)
+			}
+		}
+	}
+}
+
+func (s *dispatchService) fetchAvailableCouriers(lat, lng, radiusKm float64) ([]CourierInfo, error) {
+	url := fmt.Sprintf("%s/api/v1/couriers/available?lat=%.6f&lng=%.6f&radius_km=%.1f",
+		s.courierSvcURL, lat, lng, radiusKm)
+
+	resp, err := http.Get(url)
+	if err != nil { return nil, err }
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Data []CourierInfo `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil { return nil, err }
+	return result.Data, nil
+}
+
+func haversine(lat1, lng1, lat2, lng2 float64) float64 {
+	const R = 6371.0
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLng := (lng2 - lng1) * math.Pi / 180
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*math.Pi/180)*math.Cos(lat2*math.Pi/180)*math.Sin(dLng/2)*math.Sin(dLng/2)
+	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+}

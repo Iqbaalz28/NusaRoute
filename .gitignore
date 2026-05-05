@@ -1,0 +1,53 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+
+# Go build artifacts
+/vendor/
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker volumes
+data/
+postgres-data/
+mongo-data/
+redis-data/
+minio-data/
+kafka-data/
+zookeeper-data/
+
+# Test artifacts
+coverage.out
+coverage.html
+*.test
+*.prof
+
+# Node modules (frontend)
+node_modules/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/

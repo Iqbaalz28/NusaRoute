@@ -1,0 +1,249 @@
+pipeline {
+    agent any
+    
+    environment {
+        REGISTRY = 'nusaroute'
+        GO_VERSION = '1.23'
+        KUBECONFIG = credentials('kubeconfig')
+    }
+    
+    stages {
+        // ========================================
+        // Stage 1: Checkout
+        // ========================================
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo '✅ Source code checked out'
+            }
+        }
+        
+        // ========================================
+        // Stage 2: Unit Tests
+        // ========================================
+        stage('Unit Tests') {
+            agent {
+                docker { image "golang:${GO_VERSION}-alpine" }
+            }
+            steps {
+                dir('Tubes/NusaRoute/back-end') {
+                    sh '''
+                        echo "Running unit tests for all services..."
+                        
+                        SERVICES="user-service payment-service pricing-service order-service \
+                                  courier-service dispatch-service hub-service tracking-service \
+                                  notification-service resolution-service"
+                        
+                        for svc in $SERVICES; do
+                            echo "=== Testing services/$svc ==="
+                            cd services/$svc
+                            go test -tags=unit -v -count=1 -coverprofile=../../coverage_${svc}.out ./...
+                            cd ../..
+                        done
+                        
+                        echo "=== Testing api-gateway ==="
+                        cd api-gateway
+                        go test -tags=unit -v -count=1 ./...
+                        cd ..
+                    '''
+                }
+                echo '✅ Unit tests passed'
+            }
+            post {
+                always {
+                    publishHTML(target: [
+                        allowMissing: true,
+                        reportDir: 'Tubes/NusaRoute/back-end',
+                        reportFiles: 'coverage_*.out',
+                        reportName: 'Test Coverage'
+                    ])
+                }
+            }
+        }
+        
+        // ========================================
+        // Stage 3: Lint & Vet
+        // ========================================
+        stage('Lint & Vet') {
+            agent {
+                docker { image "golang:${GO_VERSION}-alpine" }
+            }
+            steps {
+                dir('Tubes/NusaRoute/back-end') {
+                    sh '''
+                        echo "Running go vet..."
+                        
+                        SERVICES="user-service payment-service pricing-service order-service \
+                                  courier-service dispatch-service hub-service tracking-service \
+                                  notification-service resolution-service"
+                        
+                        for svc in $SERVICES; do
+                            echo "=== Vetting services/$svc ==="
+                            cd services/$svc && go vet ./... && cd ../..
+                        done
+                        
+                        cd api-gateway && go vet ./... && cd ..
+                    '''
+                }
+                echo '✅ Lint & Vet passed'
+            }
+        }
+        
+        // ========================================
+        // Stage 4: Build Docker Images
+        // ========================================
+        stage('Build Images') {
+            steps {
+                dir('Tubes/NusaRoute/back-end') {
+                    script {
+                        def services = [
+                            'user-service', 'payment-service', 'pricing-service', 'order-service',
+                            'courier-service', 'dispatch-service', 'hub-service', 'tracking-service',
+                            'notification-service', 'resolution-service'
+                        ]
+                        
+                        services.each { svc ->
+                            echo "Building ${svc}..."
+                            sh """
+                                docker build \
+                                    --build-arg SERVICE_NAME=${svc} \
+                                    -t ${REGISTRY}/${svc}:${env.BUILD_NUMBER} \
+                                    -t ${REGISTRY}/${svc}:latest \
+                                    -f Dockerfile .
+                            """
+                        }
+                        
+                        // Build API Gateway separately
+                        sh """
+                            docker build \
+                                --build-arg SERVICE_NAME=../api-gateway \
+                                -t ${REGISTRY}/api-gateway:${env.BUILD_NUMBER} \
+                                -t ${REGISTRY}/api-gateway:latest \
+                                -f Dockerfile .
+                        """
+                    }
+                }
+                echo '✅ Docker images built'
+            }
+        }
+        
+        // ========================================
+        // Stage 5: Functional Tests
+        // ========================================
+        stage('Functional Tests') {
+            steps {
+                dir('Tubes/NusaRoute/back-end') {
+                    sh '''
+                        echo "Starting infrastructure for functional tests..."
+                        docker-compose up -d postgres mongodb redis kafka zookeeper
+                        
+                        echo "Waiting for services to be healthy..."
+                        sleep 30
+                        
+                        echo "Running functional tests..."
+                        SERVICES="user-service payment-service order-service"
+                        
+                        for svc in $SERVICES; do
+                            echo "=== Functional testing services/$svc ==="
+                            cd services/$svc
+                            go test -tags=functional -v -count=1 ./...
+                            cd ../..
+                        done
+                        
+                        echo "Cleaning up..."
+                        docker-compose down -v
+                    '''
+                }
+                echo '✅ Functional tests passed'
+            }
+        }
+        
+        // ========================================
+        // Stage 6: Push Images
+        // ========================================
+        stage('Push Images') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
+                        def services = [
+                            'user-service', 'payment-service', 'pricing-service', 'order-service',
+                            'courier-service', 'dispatch-service', 'hub-service', 'tracking-service',
+                            'notification-service', 'resolution-service', 'api-gateway'
+                        ]
+                        
+                        services.each { svc ->
+                            sh "docker push ${REGISTRY}/${svc}:${env.BUILD_NUMBER}"
+                            sh "docker push ${REGISTRY}/${svc}:latest"
+                        }
+                    }
+                }
+                echo '✅ Images pushed to registry'
+            }
+        }
+        
+        // ========================================
+        // Stage 7: Deploy to Kubernetes
+        // ========================================
+        stage('Deploy to K8s') {
+            when {
+                branch 'main'
+            }
+            steps {
+                dir('Tubes/NusaRoute/back-end/deployments/k8s') {
+                    sh '''
+                        echo "Deploying to Kubernetes..."
+                        kubectl apply -f namespace.yaml
+                        kubectl apply -f .
+                        
+                        echo "Waiting for rollout..."
+                        SERVICES="user-service payment-service pricing-service order-service \
+                                  courier-service dispatch-service hub-service tracking-service \
+                                  notification-service resolution-service api-gateway"
+                        
+                        for svc in $SERVICES; do
+                            kubectl rollout status deployment/$svc -n nusaroute --timeout=120s
+                        done
+                    '''
+                }
+                echo 'Successfully Deployed to Kubernetes'
+            }
+        }
+        
+        // ========================================
+        // Stage 8: Verify Deployment
+        // ========================================
+        stage('Verify') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh '''
+                    echo "Verifying deployment health..."
+                    GATEWAY_URL=$(kubectl get svc api-gateway -n nusaroute -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                    
+                    if [ -z "$GATEWAY_URL" ]; then
+                        GATEWAY_URL="localhost:8080"
+                    fi
+                    
+                    curl -sf http://$GATEWAY_URL/health || (echo "Health check failed!" && exit 1)
+                    echo "✅ Gateway health check passed"
+                '''
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

@@ -1,0 +1,417 @@
+version: "3.9"
+
+services:
+  # ============================================================
+  # Infrastructure Services
+  # ============================================================
+
+  # --- PostgreSQL (User, Payment, Order, Courier, Dispatch, Hub, Resolution) ---
+  postgres:
+    image: postgis/postgis:16-3.4  # PostGIS extension included for Dispatch Service
+    container_name: nusaroute-postgres
+    environment:
+      POSTGRES_USER: nusaroute
+      POSTGRES_PASSWORD: nusaroute_secret
+      POSTGRES_DB: nusaroute_user
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+    networks:
+      - nusaroute-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nusaroute"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- MongoDB (Tracking, Notification) ---
+  mongodb:
+    image: mongo:7.0
+    container_name: nusaroute-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: nusaroute
+      MONGO_INITDB_ROOT_PASSWORD: nusaroute_secret
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - nusaroute-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- Redis (Pricing Cache, JWT Blacklist, GPS Pings) ---
+  redis:
+    image: redis:7.2-alpine
+    container_name: nusaroute-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass nusaroute_secret
+    volumes:
+      - redis_data:/data
+    networks:
+      - nusaroute-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "nusaroute_secret", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- Apache Kafka (Message Broker) ---
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: nusaroute-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - nusaroute-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: nusaroute-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - nusaroute-net
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # --- Kafka UI (Dev tool) ---
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: nusaroute-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: nusaroute
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - nusaroute-net
+
+  # --- MinIO (S3-compatible Object Storage for Resolution Service) ---
+  minio:
+    image: minio/minio:latest
+    container_name: nusaroute-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: nusaroute
+      MINIO_ROOT_PASSWORD: nusaroute_secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - nusaroute-net
+
+  # ============================================================
+  # Application Services
+  # ============================================================
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: nusaroute-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - JWT_SECRET=nusaroute-jwt-secret-key-2026
+      - USER_SERVICE_URL=http://user-service:8001
+      - PAYMENT_SERVICE_URL=http://payment-service:8002
+      - PRICING_SERVICE_URL=http://pricing-service:8003
+      - ORDER_SERVICE_URL=http://order-service:8004
+      - COURIER_SERVICE_URL=http://courier-service:8005
+      - DISPATCH_SERVICE_URL=http://dispatch-service:8006
+      - HUB_SERVICE_URL=http://hub-service:8007
+      - TRACKING_SERVICE_URL=http://tracking-service:8008
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8009
+      - RESOLUTION_SERVICE_URL=http://resolution-service:8010
+    depends_on:
+      - user-service
+      - payment-service
+      - pricing-service
+      - order-service
+      - courier-service
+      - dispatch-service
+      - hub-service
+      - tracking-service
+      - notification-service
+      - resolution-service
+    networks:
+      - nusaroute-net
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    container_name: nusaroute-user-service
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=nusaroute_secret
+      - DB_NAME=nusaroute_user
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=nusaroute_secret
+      - JWT_SECRET=nusaroute-jwt-secret-key-2026
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    container_name: nusaroute-payment-service
+    ports:
+      - "8002:8002"
+    environment:
+      - PORT=8002
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=nusaroute_secret
+      - DB_NAME=nusaroute_payment
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  pricing-service:
+    build:
+      context: .
+      dockerfile: services/pricing-service/Dockerfile
+    container_name: nusaroute-pricing-service
+    ports:
+      - "8003:8003"
+    environment:
+      - PORT=8003
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=nusaroute_secret
+      - DB_NAME=nusaroute_pricing
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=nusaroute_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order-service/Dockerfile
+    container_name: nusaroute-order-service
+    ports:
+      - "8004:8004"
+    environment:
+      - PORT=8004
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=nusaroute_secret
+      - DB_NAME=nusaroute_order
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  courier-service:
+    build:
+      context: .
+      dockerfile: services/courier-service/Dockerfile
+    container_name: nusaroute-courier-service
+    ports:
+      - "8005:8005"
+    environment:
+      - PORT=8005
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=nusaroute_secret
+      - DB_NAME=nusaroute_courier
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  dispatch-service:
+    build:
+      context: .
+      dockerfile: services/dispatch-service/Dockerfile
+    container_name: nusaroute-dispatch-service
+    ports:
+      - "8006:8006"
+    environment:
+      - PORT=8006
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=nusaroute_secret
+      - DB_NAME=nusaroute_dispatch
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=nusaroute_secret
+      - KAFKA_BROKERS=kafka:29092
+      - COURIER_SERVICE_URL=http://courier-service:8005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  hub-service:
+    build:
+      context: .
+      dockerfile: services/hub-service/Dockerfile
+    container_name: nusaroute-hub-service
+    ports:
+      - "8007:8007"
+    environment:
+      - PORT=8007
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=nusaroute_secret
+      - DB_NAME=nusaroute_hub
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  tracking-service:
+    build:
+      context: .
+      dockerfile: services/tracking-service/Dockerfile
+    container_name: nusaroute-tracking-service
+    ports:
+      - "8008:8008"
+    environment:
+      - PORT=8008
+      - MONGO_URI=mongodb://nusaroute:nusaroute_secret@mongodb:27017
+      - MONGO_DB=nusaroute_tracking
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=nusaroute_secret
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    container_name: nusaroute-notification-service
+    ports:
+      - "8009:8009"
+    environment:
+      - PORT=8009
+      - MONGO_URI=mongodb://nusaroute:nusaroute_secret@mongodb:27017
+      - MONGO_DB=nusaroute_notification
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  resolution-service:
+    build:
+      context: .
+      dockerfile: services/resolution-service/Dockerfile
+    container_name: nusaroute-resolution-service
+    ports:
+      - "8010:8010"
+    environment:
+      - PORT=8010
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=nusaroute_secret
+      - DB_NAME=nusaroute_resolution
+      - KAFKA_BROKERS=kafka:29092
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=nusaroute
+      - MINIO_SECRET_KEY=nusaroute_secret
+      - MINIO_BUCKET=evidence
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - nusaroute-net
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  redis_data:
+  minio_data:
+
+networks:
+  nusaroute-net:
+    driver: bridge
