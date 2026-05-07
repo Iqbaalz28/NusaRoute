@@ -5,16 +5,19 @@ export const Footer = () => {
     <footer className="footer">
       <div className="footer__container">
         <div className="footer__brand">
-          <span className="nav__name">NusaRoute</span>
-          <p className="footer__tagline">Pengiriman Terpercaya untuk Seluruh Nusantara 🇮🇩</p>
+          <div className="nav__brand">
+            <div className="nav__logo-icon"></div>
+            <span className="nav__name">Lumina</span>
+          </div>
+          <p className="footer__tagline">Shipping simplified for the Nusantara. Reliable, transparent, and frictionless.</p>
         </div>
         <div className="footer__links">
           <div className="footer__col">
             <h4>Layanan</h4>
-            <a href="#">Reguler (REG)</a>
-            <a href="#">Yakin Esok Sampai (YES)</a>
-            <a href="#">Same Day</a>
-            <a href="#">Kargo</a>
+            <a href="#">Standard</a>
+            <a href="#">Express</a>
+            <a href="#">Cargo</a>
+            <a href="#">Overnight</a>
           </div>
           <div className="footer__col">
             <h4>Perusahaan</h4>
@@ -31,7 +34,7 @@ export const Footer = () => {
         </div>
       </div>
       <div className="footer__bottom">
-        <p>&copy; 2026 NusaRoute. Hak Cipta Dilindungi.</p>
+        <p>&copy; 2026 Lumina Courier. All rights reserved.</p>
       </div>
     </footer>
   );

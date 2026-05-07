@@ -13,6 +13,12 @@ import { LoginModal } from "../components/LoginModal";
 export default function Home() {
   const [activePage, setActivePage] = useState("dashboard");
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [selectedAwb, setSelectedAwb] = useState("");
+
+  const handleTrackPackage = (awb: string) => {
+    setSelectedAwb(awb);
+    setActivePage("tracking");
+  };
 
   const renderPage = () => {
     switch (activePage) {
@@ -20,11 +26,12 @@ export default function Home() {
         return (
           <DashboardPage
             onStartShipping={() => setActivePage("services")}
-            onTrackPackage={() => setActivePage("tracking")}
+            onTrackPackage={handleTrackPackage}
+            onNavigate={setActivePage}
           />
         );
       case "tracking":
-        return <TrackingPage />;
+        return <TrackingPage initialAwb={selectedAwb} />;
       case "orders":
         return <OrdersPage />;
       case "services":
@@ -35,14 +42,15 @@ export default function Home() {
         return (
           <DashboardPage
             onStartShipping={() => setActivePage("services")}
-            onTrackPackage={() => setActivePage("tracking")}
+            onTrackPackage={handleTrackPackage}
+            onNavigate={setActivePage}
           />
         );
     }
   };
 
   return (
-    <main className="main">
+    <main style={{ background: 'var(--color-background)', minHeight: '100vh' }}>
       <Navbar
         activePage={activePage}
         setActivePage={setActivePage}
