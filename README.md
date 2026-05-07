@@ -50,7 +50,7 @@ NusaRoute adalah platform logistik berbasis **arsitektur microservices** yang di
 | CI/CD | Jenkins (8-stage pipeline) |
 | Container | Docker & Docker Compose |
 | Orchestration | Kubernetes (HPA autoscaling) |
-| Frontend | Vanilla HTML/CSS/JS (Glassmorphism UI) |
+| Frontend | Next.js 16, React 19, TypeScript (Light-Toned UI) |
 
 ---
 
@@ -121,16 +121,23 @@ cd back-end/services/order-service && go run cmd/main.go
 # ... etc
 ```
 
-### 3. Or Run All via Docker Compose
+### 3. Run Frontend Dashboard
+```bash
+cd front-end
+npm install
+npm run dev
+```
+
+### 4. Or Run All via Docker Compose
 ```bash
 cd back-end && docker-compose up --build
 ```
 
-### 4. Access
+### 5. Access
 | Service | URL |
 |---------|-----|
 | API Gateway | http://localhost:8080 |
-| Frontend Dashboard | Open `front-end/index.html` |
+| Frontend Dashboard | http://localhost:3000 |
 | Kafka UI | http://localhost:8090 |
 | MinIO Console | http://localhost:9001 |
 
@@ -152,10 +159,11 @@ cd back-end && make build-all
 
 ```
 NusaRoute/
-├── front-end/                   # Web Dashboard (HTML/CSS/JS)
-│   ├── index.html
-│   ├── index.css
-│   └── app.js
+├── front-end/                   # Web Dashboard (Next.js, React, TypeScript)
+│   ├── app/                     # Next.js App Router (Pages & Layouts)
+│   ├── components/              # Reusable React Components
+│   ├── public/                  # Static Assets
+│   └── package.json             # NPM Dependencies
 ├── back-end/
 │   ├── docker-compose.yml       # Full infrastructure stack
 │   ├── Makefile                 # Build, test, lint commands
