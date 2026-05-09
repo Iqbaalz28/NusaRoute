@@ -35,12 +35,8 @@ func NewOrderService(repo repository.OrderRepository, producer *kafka.Producer) 
 	return &orderService{repo: repo, producer: producer}
 }
 
-// publish safely publishes a Kafka event, skipping if producer is nil (e.g. in tests).
 func (s *orderService) publish(ctx context.Context, topic, key string, event interface{}) error {
-	if s.producer == nil {
-		log.Printf("[Order] Kafka producer is nil, skipping publish to %s", topic)
-		return nil
-	}
+	if s.producer == nil { return nil }
 	return s.producer.Publish(ctx, topic, key, event)
 }
 
@@ -56,8 +52,6 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req model
 		ReceiverName: req.ReceiverName, ReceiverPhone: req.ReceiverPhone,
 		ReceiverAddress: req.ReceiverAddress, ReceiverLat: req.ReceiverLat, ReceiverLng: req.ReceiverLng,
 		ItemDescription: req.ItemDescription, WeightKg: req.WeightKg,
-		LengthCm: req.LengthCm, WidthCm: req.WidthCm, HeightCm: req.HeightCm,
-		IsInsured: req.IsInsured, InsuredValue: req.InsuredValue,
 		ShippingCost: req.ShippingCost, InsuranceCost: req.InsuranceCost, TotalCost: req.TotalCost,
 	}
 
@@ -65,7 +59,6 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req model
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
 
-	log.Printf("[Order] Created order AWB=%s for user=%s", order.AWB, userID)
 	return order, nil
 }
 
@@ -83,13 +76,8 @@ func (s *orderService) CancelOrder(ctx context.Context, orderID, userID string) 
 	order, err := s.repo.GetByID(ctx, orderID)
 	if err != nil { return errors.New("order not found") }
 	if order.UserID != userID { return errors.New("not authorized") }
-	if order.Status != events.OrderStatusPendingPayment && order.Status != events.OrderStatusReadyForPickup {
-		return errors.New("order cannot be cancelled in current status")
-	}
-
-	if err := s.repo.MarkCancelled(ctx, orderID); err != nil {
-		return err
-	}
+	
+	if err := s.repo.MarkCancelled(ctx, orderID); err != nil { return err }
 
 	event := events.OrderCancelledEvent{
 		BaseEvent: events.BaseEvent{
@@ -126,10 +114,8 @@ func (s *orderService) HandlePaymentSuccess(ctx context.Context, orderID string)
 func (s *orderService) HandleDeliveryFailed(ctx context.Context, orderID string, attempts int) error {
 	if attempts >= events.MaxDeliveryAttempts {
 		s.repo.UpdateStatus(ctx, orderID, events.OrderStatusReturnToSender, "Max delivery attempts reached", "system")
-		log.Printf("[Order] ⚠️ Order %s → RETURN_TO_SENDER after %d failed attempts", orderID, attempts)
 	} else {
-		s.repo.UpdateStatus(ctx, orderID, events.OrderStatusDeliveryFailed,
-			fmt.Sprintf("Delivery attempt %d failed", attempts), "system")
+		s.repo.UpdateStatus(ctx, orderID, events.OrderStatusDeliveryFailed, fmt.Sprintf("Delivery attempt %d failed", attempts), "system")
 	}
 	return s.repo.IncrementDeliveryAttempts(ctx, orderID)
 }
@@ -138,60 +124,33 @@ func (s *orderService) HandlePackageDelivered(ctx context.Context, orderID strin
 	return s.repo.MarkDelivered(ctx, orderID)
 }
 
-// RunSLAMonitor checks for packages stuck > 48 hours without status updates.
 func (s *orderService) RunSLAMonitor(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done(): return
 		case <-ticker.C:
 			stuckOrders, err := s.repo.GetStuckOrders(ctx, 48*time.Hour)
-			if err != nil { log.Printf("[SLA] Error: %v", err); continue }
-
-			for _, order := range stuckOrders {
-				log.Printf("[SLA] ⚠️ Package LOST suspected: AWB=%s, stuck since %v", order.AWB, order.UpdatedAt)
-				s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusLostSuspected, "No scan for 48+ hours", "sla-monitor")
-
-				event := events.PackageLostSuspectedEvent{
-					BaseEvent: events.BaseEvent{
-						EventID: uuid.New().String(), EventType: events.TopicPackageLost,
-						Timestamp: time.Now(), Source: "order-service",
-					},
-					OrderID: order.ID, AWB: order.AWB, LastScanTime: order.UpdatedAt,
-					HoursSinceUpdate: int(time.Since(order.UpdatedAt).Hours()),
-				}
-				s.publish(ctx, events.TopicPackageLost, order.ID, event)
+			if err != nil { continue }
+			for _, o := range stuckOrders {
+				s.repo.UpdateStatus(ctx, o.ID, events.OrderStatusLostSuspected, "No scan for 48+ hours", "sla-monitor")
 			}
 		}
 	}
 }
 
-// RunPaymentExpiryChecker cancels orders pending payment > 24 hours (Saga Pattern).
 func (s *orderService) RunPaymentExpiryChecker(ctx context.Context) {
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done(): return
 		case <-ticker.C:
 			expired, err := s.repo.GetExpiredPendingOrders(ctx, 24*time.Hour)
-			if err != nil { log.Printf("[Saga] Error: %v", err); continue }
-
-			for _, order := range expired {
-				log.Printf("[Saga] Auto-cancelling expired order AWB=%s (created %v)", order.AWB, order.CreatedAt)
-				s.repo.MarkCancelled(ctx, order.ID)
-
-				event := events.OrderCancelledEvent{
-					BaseEvent: events.BaseEvent{
-						EventID: uuid.New().String(), EventType: events.TopicOrderCancelled,
-						Timestamp: time.Now(), Source: "order-service",
-					},
-					OrderID: order.ID, Reason: "Payment timeout (24h expired)",
-				}
-				s.publish(ctx, events.TopicOrderCancelled, order.ID, event)
+			if err != nil { continue }
+			for _, o := range expired {
+				s.repo.MarkCancelled(ctx, o.ID)
 			}
 		}
 	}

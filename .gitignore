@@ -51,3 +51,7 @@ node_modules/
 # Temporary files
 tmp/
 temp/
+
+# perintah
+instructions.md
+documentations.md

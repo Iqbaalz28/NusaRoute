@@ -26,7 +26,7 @@ pipeline {
                 docker { image "golang:${GO_VERSION}-alpine" }
             }
             steps {
-                dir('Tubes/NusaRoute/back-end') {
+                dir('back-end') {
                     sh '''
                         echo "Running unit tests for all services..."
                         
@@ -53,7 +53,7 @@ pipeline {
                 always {
                     publishHTML(target: [
                         allowMissing: true,
-                        reportDir: 'Tubes/NusaRoute/back-end',
+                        reportDir: 'back-end',
                         reportFiles: 'coverage_*.out',
                         reportName: 'Test Coverage'
                     ])
@@ -69,7 +69,7 @@ pipeline {
                 docker { image "golang:${GO_VERSION}-alpine" }
             }
             steps {
-                dir('Tubes/NusaRoute/back-end') {
+                dir('back-end') {
                     sh '''
                         echo "Running go vet..."
                         
@@ -94,7 +94,7 @@ pipeline {
         // ========================================
         stage('Build Images') {
             steps {
-                dir('Tubes/NusaRoute/back-end') {
+                dir('back-end') {
                     script {
                         def services = [
                             'user-service', 'payment-service', 'pricing-service', 'order-service',
@@ -132,7 +132,7 @@ pipeline {
         // ========================================
         stage('Functional Tests') {
             steps {
-                dir('Tubes/NusaRoute/back-end') {
+                dir('back-end') {
                     sh '''
                         echo "Starting infrastructure for functional tests..."
                         docker-compose up -d postgres mongodb redis kafka zookeeper
@@ -192,7 +192,7 @@ pipeline {
                 branch 'main'
             }
             steps {
-                dir('Tubes/NusaRoute/back-end/deployments/k8s') {
+                dir('back-end/deployments/k8s') {
                     sh '''
                         echo "Deploying to Kubernetes..."
                         kubectl apply -f namespace.yaml
