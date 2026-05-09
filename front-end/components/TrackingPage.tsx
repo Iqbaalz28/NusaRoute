@@ -18,10 +18,12 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ initialAwb }) => {
   }, [initialAwb]);
 
   const events = [
-    { status: "Out for Delivery", detail: "Pending", location: "", time: "", type: "pending" },
-    { status: "In Transit", detail: "Chicago Distribution Center, IL", location: "Oct 26, 02:15 PM", time: "", type: "active" },
-    { status: "Picked Up", detail: "Los Angeles Drop-off Point, CA", location: "Oct 25, 10:30 AM", time: "", type: "done" },
-    { status: "Label Created", detail: "Sender provided shipping information", location: "Oct 24, 08:00 AM", time: "", type: "done" },
+    { status: "Package Received", detail: "Package has been received by recipient", location: "South Jakarta", time: "05 May 2026, 14:32 WIB", type: "done" },
+    { status: "Out for Delivery", detail: "Courier is on the way to the recipient's address", location: "South Jakarta", time: "05 May 2026, 13:45 WIB", type: "active" },
+    { status: "Arrived at Hub Jakarta", detail: "Package sorted at Central Jakarta Hub (JKT-01)", location: "Central Jakarta Hub", time: "05 May 2026, 08:12 WIB", type: "done" },
+    { status: "Departed from Hub Bandung", detail: "Package departed for Jakarta Hub", location: "Bandung Hub", time: "04 May 2026, 22:30 WIB", type: "done" },
+    { status: "Arrived at Hub Bandung", detail: "Package arrived and scanned at Bandung Hub (BDG-01)", location: "Bandung Hub", time: "04 May 2026, 18:15 WIB", type: "done" },
+    { status: "Package Picked Up", detail: "Package picked up by courier from sender's address", location: "Bandung", time: "04 May 2026, 15:20 WIB", type: "done" },
   ];
 
   const handleTrack = () => {
@@ -53,10 +55,10 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ initialAwb }) => {
       ) : (
         <>
           <div className="track-header">
-            <span className="status-pill status-pill--transit">In Transit</span>
+            <span className="status-pill status-pill--delivered">Delivered</span>
             <p style={{ color: 'var(--color-muted)', marginBottom: '0.5rem' }}>Updated 2 mins ago</p>
             <h1 style={{ fontSize: '3.5rem', maxWidth: '600px', lineHeight: '1.1' }}>
-              Arriving by Tomorrow, 8:00 PM
+              Package Delivered Successfully
             </h1>
           </div>
 
@@ -71,7 +73,7 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ initialAwb }) => {
                   <div className="timeline__content">
                     <div className="timeline__status">{e.status}</div>
                     <div className="timeline__location">{e.detail}</div>
-                    {e.location && <div className="timeline__time">{e.location}</div>}
+                    <div className="timeline__time">📍 {e.location} · {e.time}</div>
                   </div>
                 </div>
               ))}
@@ -92,30 +94,30 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ initialAwb }) => {
 
               <div className="details-section">
                 <div className="details-label">From</div>
-                <div className="details-value">Tech Supply Co.</div>
-                <div className="details-label">Los Angeles, CA 90001</div>
+                <div className="details-value">Budi S.</div>
+                <div className="details-label">Bandung, Jawa Barat</div>
               </div>
 
               <div className="details-section">
                 <div className="details-label">To</div>
-                <div className="details-value">Jane Doe</div>
-                <div className="details-label">Chicago, IL 60601</div>
+                <div className="details-value">Siti Aminah</div>
+                <div className="details-label">Jakarta Selatan, DKI Jakarta</div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div className="details-section">
                   <div className="details-label">Weight</div>
-                  <div className="details-value">4.2 lbs</div>
+                  <div className="details-value">2.0 kg</div>
                 </div>
                 <div className="details-section">
                   <div className="details-label">Dimensions</div>
-                  <div className="details-value">12" x 8" x 6"</div>
+                  <div className="details-value">30cm x 20cm x 15cm</div>
                 </div>
               </div>
 
               <div style={{ marginTop: '2rem', borderRadius: '16px', overflow: 'hidden', height: '150px', background: '#E2E8F0', position: 'relative' }}>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-muted)' }}>
-                  Map View
+                  Map View (Lumina Tracking)
                 </div>
               </div>
             </div>

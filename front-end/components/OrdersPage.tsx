@@ -10,6 +10,10 @@ export const OrdersPage = () => {
     { awb: "LUM77628301", sender: "Rina W.", receiver: "Ahmad K.", service: "Standard", status: "IN_TRANSIT", cost: 18000, date: "04 Mei 2026" },
     { awb: "LUM66219402", sender: "Deni P.", receiver: "Maya L.", service: "Express", status: "IN_TRANSIT", cost: 85000, date: "04 Mei 2026" },
     { awb: "LUM55291746", sender: "Farhan R.", receiver: "Lisa N.", service: "Standard", status: "PENDING", cost: 22500, date: "04 Mei 2026" },
+    { awb: "LUM44182937", sender: "Galih M.", receiver: "Putri H.", service: "Cargo", status: "IN_TRANSIT", cost: 125000, date: "03 Mei 2026" },
+    { awb: "LUM33071826", sender: "Hadi S.", receiver: "Wulan D.", service: "Express", status: "FAILED", cost: 35000, date: "03 Mei 2026" },
+    { awb: "LUM22960715", sender: "Ivan T.", receiver: "Joko P.", service: "Standard", status: "DELIVERED", cost: 15500, date: "02 Mei 2026" },
+    { awb: "LUM11859604", sender: "Kiki A.", receiver: "Lani B.", service: "Express", status: "CANCELLED", cost: 92000, date: "01 Mei 2026" },
   ];
 
   const filteredOrders = filter === "all" ? orders : orders.filter((o) => o.status === filter);
@@ -20,6 +24,7 @@ export const OrdersPage = () => {
       IN_TRANSIT: ["status-pill--transit", "In Transit"],
       DELIVERED: ["status-pill--delivered", "Delivered"],
       CANCELLED: ["status-pill--transit", "Cancelled"],
+      FAILED: ["status-pill--transit", "Failed"],
     };
     const [cls, label] = map[status] || ["", status];
     return <span className={`status-pill ${cls}`} style={{ marginBottom: 0, padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>{label}</span>;
@@ -29,6 +34,7 @@ export const OrdersPage = () => {
     { id: "all", label: "All" },
     { id: "IN_TRANSIT", label: "In Transit" },
     { id: "DELIVERED", label: "Delivered" },
+    { id: "PENDING", label: "Pending" },
   ];
 
   return (
@@ -66,6 +72,7 @@ export const OrdersPage = () => {
               <th style={{ padding: '1.5rem' }}>Service</th>
               <th style={{ padding: '1.5rem' }}>Status</th>
               <th style={{ padding: '1.5rem' }}>Cost</th>
+              <th style={{ padding: '1.5rem' }}>Date</th>
             </tr>
           </thead>
           <tbody>
@@ -77,6 +84,7 @@ export const OrdersPage = () => {
                 <td style={{ padding: '1.5rem' }}>{o.service}</td>
                 <td style={{ padding: '1.5rem' }}>{getStatusBadge(o.status)}</td>
                 <td style={{ padding: '1.5rem', fontWeight: 700, color: 'var(--color-primary)' }}>Rp {o.cost.toLocaleString("id-ID")}</td>
+                <td style={{ padding: '1.5rem' }}>{o.date}</td>
               </tr>
             ))}
           </tbody>

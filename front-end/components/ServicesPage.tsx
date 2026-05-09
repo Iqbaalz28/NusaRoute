@@ -42,27 +42,26 @@ export const ServicesPage = () => {
               onChange={(e) => setDest(e.target.value)}
             />
           </div>
-          {/* Dashed line connecting dots decoration could be added here in CSS */}
         </div>
 
         <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Package Details</h3>
         <div className="package-grid">
           <div className="package-input-box">
-            <label>Length (in)</label>
+            <label>Length (cm)</label>
             <input type="number" value={length} onChange={(e) => setLength(Number(e.target.value))} />
           </div>
           <div className="package-input-box">
-            <label>Width (in)</label>
+            <label>Width (cm)</label>
             <input type="number" value={width} onChange={(e) => setWidth(Number(e.target.value))} />
           </div>
           <div className="package-input-box">
-            <label>Height (in)</label>
+            <label>Height (cm)</label>
             <input type="number" value={height} onChange={(e) => setHeight(Number(e.target.value))} />
           </div>
         </div>
         
         <div className="package-input-box" style={{ marginBottom: '3rem', border: '1px solid var(--color-primary)' }}>
-          <label style={{ color: 'var(--color-primary)' }}>Weight (lbs)</label>
+          <label style={{ color: 'var(--color-primary)' }}>Weight (kg)</label>
           <input type="number" value={weight} onChange={(e) => setWeight(Number(e.target.value))} />
         </div>
 
@@ -80,32 +79,32 @@ export const ServicesPage = () => {
               <div>
                 <div className="result-name">Standard</div>
                 <div style={{ opacity: 0.6, fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                  📅 Estimated delivery: Oct 24 - 26
+                  📅 Estimated delivery: 3-5 days
                 </div>
               </div>
-              <div className="result-price">$12.50</div>
+              <div className="result-price">Rp 12.000</div>
             </div>
 
             <div className="result-row" style={{ padding: '1rem 0', opacity: 0.8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ fontSize: '1.5rem' }}>🚚</span>
+                <span style={{ fontSize: '1.5rem' }}>⚡</span>
                 <div>
                   <div style={{ fontWeight: 600 }}>Express</div>
-                  <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>1-2 business days</div>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Next Day Delivery</div>
                 </div>
               </div>
-              <div style={{ fontWeight: 700 }}>$28.00</div>
+              <div style={{ fontWeight: 700 }}>Rp 25.000</div>
             </div>
 
             <div className="result-row" style={{ padding: '1rem 0', opacity: 0.8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ fontSize: '1.5rem' }}>✈</span>
+                <span style={{ fontSize: '1.5rem' }}>📦</span>
                 <div>
-                  <div style={{ fontWeight: 600 }}>Overnight</div>
-                  <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>Next business day morning</div>
+                  <div style={{ fontWeight: 600 }}>Cargo</div>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>5-7 days for large items</div>
                 </div>
               </div>
-              <div style={{ fontWeight: 700 }}>$45.00</div>
+              <div style={{ fontWeight: 700 }}>Rp 45.000</div>
             </div>
           </div>
         )}

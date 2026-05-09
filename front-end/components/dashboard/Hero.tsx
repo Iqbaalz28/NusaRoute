@@ -91,7 +91,7 @@ export const Hero: React.FC<HeroProps> = ({ onTrack, onNavigate }) => {
             {activeTab === 'hub' && (
               <>
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: '99px', padding: '0 1.5rem', height: '52px', fontSize: '0.9rem', color: 'var(--color-muted)' }}>
-                  8 sorting centers across Indonesia
+                   8 sorting centers across Indonesia
                 </div>
                 <button className="btn btn--primary" onClick={() => onNavigate('hubs')} style={{ height: '52px' }}>View</button>
               </>
@@ -99,7 +99,7 @@ export const Hero: React.FC<HeroProps> = ({ onTrack, onNavigate }) => {
             {activeTab === 'rate' && (
               <>
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: '99px', padding: '0 1.5rem', height: '52px', fontSize: '0.9rem', color: 'var(--color-muted)' }}>
-                  Rates starting from Rp 8.000
+                   Rates starting from Rp 8.000
                 </div>
                 <button className="btn btn--primary" onClick={() => onNavigate('services')} style={{ height: '52px' }}>Check</button>
               </>
