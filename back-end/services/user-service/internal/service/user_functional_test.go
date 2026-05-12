@@ -6,7 +6,6 @@ import (
 	"context"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/nusaroute/pkg/database"
 	"github.com/nusaroute/services/user-service/internal/model"
