@@ -5,6 +5,7 @@
 *.so
 *.dylib
 *.out
+back-end/bin/
 
 # Go build artifacts
 /vendor/
