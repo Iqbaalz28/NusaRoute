@@ -49,21 +49,23 @@ const StatItem: React.FC<StatItemProps> = ({ icon, count, label, trend, trendTyp
   };
 
   return (
-    <div className="stat-card" ref={elementRef}>
-      <div className={`stat-card__icon`}>{icon}</div>
-      <div className="stat-card__value">
+    <div className="bg-surface border border-border rounded-[20px] p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-primary hover:shadow-hover shadow-soft" ref={elementRef}>
+      <div className="text-3xl mb-3">{icon}</div>
+      <div className="text-[2rem] font-extrabold tracking-tight text-text leading-none">
         {displayCount.toLocaleString("id-ID")}
         {suffix}
       </div>
-      <div className="stat-card__label">{label}</div>
-      <div className={`stat-card__trend stat-card__trend--${trendType}`}>{trend}</div>
+      <div className="text-[0.8rem] text-muted mt-1">{label}</div>
+      <div className={`absolute top-5 right-5 text-[0.75rem] font-semibold px-2.5 py-1 rounded-full ${trendType === 'up' ? 'bg-accent text-[#1B4D3E]' : 'bg-border text-muted'}`}>
+        {trend}
+      </div>
     </div>
   );
 };
 
 export const Stats = () => {
   return (
-    <div className="stats-grid">
+    <div className="max-w-[1200px] mx-auto px-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
       <StatItem icon="📦" count={15847} label="Paket Terkirim Hari Ini" trend="+12.5%" trendType="up" />
       <StatItem icon="🛵" count={2341} label="Kurir Aktif" trend="+5.2%" trendType="up" />
       <StatItem icon="🏢" count={128} label="Hub Operasional" trend="Stabil" trendType="neutral" />

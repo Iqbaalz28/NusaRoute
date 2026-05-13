@@ -15,8 +15,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Lumina Courier — Shipping, simplified.",
-  description: "Lumina: Modern logistics platform for reliable tracking and transparent pricing. Shipping simplified for the Nusantara.",
+  title: "NusaRoute — Solusi Pengiriman Nusantara.",
+  description: "NusaRoute: Platform logistik modern untuk pelacakan andal dan harga transparan. Pengiriman yang disederhanakan untuk Nusantara.",
 };
 
 export default function RootLayout({
@@ -25,8 +25,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id">
-      <body className={`${spaceGrotesk.variable} ${dmSans.variable}`}>
+    <html lang="id" className={`${spaceGrotesk.variable} ${dmSans.variable}`}>
+      <body className="font-body antialiased min-h-screen bg-background text-text">
         {children}
       </body>
     </html>

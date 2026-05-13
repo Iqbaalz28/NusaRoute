@@ -39,13 +39,13 @@ export const LiveFeed = () => {
   }, []);
 
   return (
-    <div className="card__body" id="eventFeed">
+    <div className="p-6" id="eventFeed">
       {events.map((e, i) => (
-        <div className="event-item" key={i}>
-          <span className="event-item__icon">{e.icon}</span>
+        <div className="flex gap-3 items-start py-3 border-b border-border last:border-none" key={i}>
+          <span className="text-xl flex-shrink-0">{e.icon}</span>
           <div>
-            <div className="event-item__text">{e.text}</div>
-            <div className="event-item__time">{e.time}</div>
+            <div className="text-[0.8rem] leading-snug text-text">{e.text}</div>
+            <div className="text-[0.7rem] text-muted mt-0.5">{e.time}</div>
           </div>
         </div>
       ))}

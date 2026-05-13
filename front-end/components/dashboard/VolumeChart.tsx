@@ -49,10 +49,10 @@ export const VolumeChart = () => {
       ctx.fillText(val.toLocaleString("id-ID"), pad.left - 8, y + 4);
     }
 
-    // Area gradient — light indigo
+    // Area gradient — NusaRoute Primary
     const gradient = ctx.createLinearGradient(0, pad.top, 0, H - pad.bottom);
-    gradient.addColorStop(0, "rgba(79,70,229,0.15)");
-    gradient.addColorStop(1, "rgba(79,70,229,0.01)");
+    gradient.addColorStop(0, "rgba(255,107,74,0.15)");
+    gradient.addColorStop(1, "rgba(255,107,74,0.01)");
 
     const points = data.map((v, i) => ({
       x: pad.left + (chartW / (data.length - 1)) * i,
@@ -75,15 +75,15 @@ export const VolumeChart = () => {
       const cp1x = (points[i - 1].x + points[i].x) / 2;
       ctx.bezierCurveTo(cp1x, points[i - 1].y, cp1x, points[i].y, points[i].x, points[i].y);
     }
-    ctx.strokeStyle = "#4f46e5";
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "#FF6B4A";
+    ctx.lineWidth = 3;
     ctx.stroke();
 
     // Dots
     points.forEach((p, i) => {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = i === points.length - 1 ? "#0891b2" : "#4f46e5";
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = i === points.length - 1 ? "#FF6B4A" : "#2D3142";
       ctx.fill();
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
@@ -92,12 +92,12 @@ export const VolumeChart = () => {
 
     // Labels
     labels.forEach((l, i) => {
-      ctx.fillStyle = "#64748b";
-      ctx.font = "12px Inter, sans-serif";
+      ctx.fillStyle = "#8C93A8";
+      ctx.font = "bold 11px var(--font-body), sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(l, points[i].x, H - pad.bottom + 20);
+      ctx.fillText(l, points[i].x, H - pad.bottom + 25);
     });
   }, []);
 
-  return <canvas ref={canvasRef} width="600" height="280"></canvas>;
+  return <canvas ref={canvasRef} className="w-full h-[280px]"></canvas>;
 };

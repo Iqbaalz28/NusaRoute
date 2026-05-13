@@ -2,39 +2,45 @@ import React from "react";
 
 export const Footer = () => {
   return (
-    <footer className="footer">
-      <div className="footer__container">
-        <div className="footer__brand">
-          <div className="nav__brand">
-            <div className="nav__logo-icon"></div>
-            <span className="nav__name">Lumina</span>
+    <footer className="bg-surface px-8 pt-24 pb-8 border-t border-border mt-16">
+      <div className="max-w-[1200px] mx-auto grid grid-cols-1 md:grid-cols-[1.5fr_repeat(3,1fr)] gap-16 mb-24">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 bg-primary rounded-[4px] rotate-45"></div>
+            <span className="font-heading font-bold text-xl text-text">NusaRoute</span>
           </div>
-          <p className="footer__tagline">Shipping simplified for the Nusantara. Reliable, transparent, and frictionless.</p>
+          <p className="text-muted mt-4 max-w-[240px] leading-relaxed">
+            Pengiriman yang disederhanakan untuk Nusantara. Andal, transparan, dan tanpa hambatan.
+          </p>
         </div>
-        <div className="footer__links">
-          <div className="footer__col">
-            <h4>Layanan</h4>
-            <a href="#">Standard</a>
-            <a href="#">Express</a>
-            <a href="#">Cargo</a>
-            <a href="#">Overnight</a>
+        <div className="flex flex-col gap-6">
+          <h4 className="font-heading font-bold text-base text-text">Layanan</h4>
+          <div className="flex flex-col gap-3">
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Standard</a>
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Express</a>
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Cargo</a>
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Overnight</a>
           </div>
-          <div className="footer__col">
-            <h4>Perusahaan</h4>
-            <a href="#">Tentang Kami</a>
-            <a href="#">Karir</a>
-            <a href="#">Blog</a>
+        </div>
+        <div className="flex flex-col gap-6">
+          <h4 className="font-heading font-bold text-base text-text">Perusahaan</h4>
+          <div className="flex flex-col gap-3">
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Tentang Kami</a>
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Karir</a>
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Blog</a>
           </div>
-          <div className="footer__col">
-            <h4>Bantuan</h4>
-            <a href="#">FAQ</a>
-            <a href="#">Hubungi Kami</a>
-            <a href="#">Syarat & Ketentuan</a>
+        </div>
+        <div className="flex flex-col gap-6">
+          <h4 className="font-heading font-bold text-base text-text">Bantuan</h4>
+          <div className="flex flex-col gap-3">
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">FAQ</a>
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Hubungi Kami</a>
+            <a href="#" className="text-muted hover:text-primary transition-colors text-[0.95rem]">Syarat & Ketentuan</a>
           </div>
         </div>
       </div>
-      <div className="footer__bottom">
-        <p>&copy; 2026 Lumina Courier. All rights reserved.</p>
+      <div className="border-t border-border text-center py-6 text-[0.8rem] text-muted">
+        <p>&copy; 2026 NusaRoute. Hak cipta dilindungi undang-undang.</p>
       </div>
     </footer>
   );
