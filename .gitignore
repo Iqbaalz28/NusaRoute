@@ -58,3 +58,7 @@ Kelompok 3 - Tubes Tahap 1_ Analisis dan Perancangan Microservice.pdf
 instructions.md
 documentations.md
 
+# Next.js build output
+.next/
+out/
+build/
