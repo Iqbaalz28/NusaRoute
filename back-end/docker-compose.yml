@@ -11,7 +11,7 @@ services:
     container_name: nusaroute-postgres
     environment:
       POSTGRES_USER: nusaroute
-      POSTGRES_PASSWORD: nusaroute_secret
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: nusaroute_user
     ports:
       - "5432:5432"
@@ -32,7 +32,7 @@ services:
     container_name: nusaroute-mongodb
     environment:
       MONGO_INITDB_ROOT_USERNAME: nusaroute
-      MONGO_INITDB_ROOT_PASSWORD: nusaroute_secret
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     ports:
       - "27017:27017"
     volumes:
@@ -51,13 +51,13 @@ services:
     container_name: nusaroute-redis
     ports:
       - "6379:6379"
-    command: redis-server --requirepass nusaroute_secret
+    command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
       - nusaroute-net
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "nusaroute_secret", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -120,7 +120,7 @@ services:
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: nusaroute
-      MINIO_ROOT_PASSWORD: nusaroute_secret
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -142,7 +142,7 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      - JWT_SECRET=nusaroute-jwt-secret-key-2026
+      - JWT_SECRET=${JWT_SECRET}
       - USER_SERVICE_URL=http://user-service:8001
       - PAYMENT_SERVICE_URL=http://payment-service:8002
       - PRICING_SERVICE_URL=http://pricing-service:8003
@@ -179,11 +179,11 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=nusaroute
-      - DB_PASSWORD=nusaroute_secret
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_user
       - REDIS_ADDR=redis:6379
-      - REDIS_PASSWORD=nusaroute_secret
-      - JWT_SECRET=nusaroute-jwt-secret-key-2026
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
       - KAFKA_BROKERS=kafka:29092
     depends_on:
       postgres:
@@ -205,7 +205,7 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=nusaroute
-      - DB_PASSWORD=nusaroute_secret
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_payment
       - KAFKA_BROKERS=kafka:29092
     depends_on:
@@ -228,10 +228,10 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=nusaroute
-      - DB_PASSWORD=nusaroute_secret
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_pricing
       - REDIS_ADDR=redis:6379
-      - REDIS_PASSWORD=nusaroute_secret
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -252,7 +252,7 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=nusaroute
-      - DB_PASSWORD=nusaroute_secret
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_order
       - KAFKA_BROKERS=kafka:29092
     depends_on:
@@ -275,7 +275,7 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=nusaroute
-      - DB_PASSWORD=nusaroute_secret
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_courier
       - KAFKA_BROKERS=kafka:29092
     depends_on:
@@ -296,10 +296,10 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=nusaroute
-      - DB_PASSWORD=nusaroute_secret
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_dispatch
       - REDIS_ADDR=redis:6379
-      - REDIS_PASSWORD=nusaroute_secret
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - KAFKA_BROKERS=kafka:29092
       - COURIER_SERVICE_URL=http://courier-service:8005
     depends_on:
@@ -322,7 +322,7 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=nusaroute
-      - DB_PASSWORD=nusaroute_secret
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_hub
       - KAFKA_BROKERS=kafka:29092
     depends_on:
@@ -342,10 +342,10 @@ services:
       - "8008:8008"
     environment:
       - PORT=8008
-      - MONGO_URI=mongodb://nusaroute:nusaroute_secret@mongodb:27017
+      - MONGO_URI=mongodb://nusaroute:${MONGO_PASSWORD}@mongodb:27017
       - MONGO_DB=nusaroute_tracking
       - REDIS_ADDR=redis:6379
-      - REDIS_PASSWORD=nusaroute_secret
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - KAFKA_BROKERS=kafka:29092
     depends_on:
       mongodb:
@@ -366,7 +366,7 @@ services:
       - "8009:8009"
     environment:
       - PORT=8009
-      - MONGO_URI=mongodb://nusaroute:nusaroute_secret@mongodb:27017
+      - MONGO_URI=mongodb://nusaroute:${MONGO_PASSWORD}@mongodb:27017
       - MONGO_DB=nusaroute_notification
       - KAFKA_BROKERS=kafka:29092
     depends_on:
@@ -389,12 +389,12 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=nusaroute
-      - DB_PASSWORD=nusaroute_secret
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_resolution
       - KAFKA_BROKERS=kafka:29092
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=nusaroute
-      - MINIO_SECRET_KEY=nusaroute_secret
+      - MINIO_SECRET_KEY=${MINIO_PASSWORD}
       - MINIO_BUCKET=evidence
     depends_on:
       postgres:
@@ -405,6 +405,30 @@ services:
         condition: service_started
     networks:
       - nusaroute-net
+
+  # --- Prometheus (Metrics) ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nusaroute-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - nusaroute-net
+
+  # --- Grafana (Dashboards) ---
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nusaroute-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - nusaroute-net
+    depends_on:
+      - prometheus
 
 volumes:
   postgres_data:

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"time"
+	"sync"
+	"fmt"
+	"github.com/nusaroute/pkg/logger"
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -18,17 +22,18 @@ import (
 )
 
 func main() {
-	log.Println("🚀 Starting NusaRoute Dispatch Service...")
+	logger.InitLogger("dispatch-service")
+	logger.Info(context.Background(), fmt.Sprint("🚀 Starting NusaRoute Dispatch Service..."))
 	port := getEnv("PORT", "8006")
 	kafkaBrokers := strings.Split(getEnv("KAFKA_BROKERS", "localhost:9092"), ",")
 	courierSvcURL := getEnv("COURIER_SERVICE_URL", "http://localhost:8005")
 
 	db, err := database.ConnectPostgres(database.PostgresConfig{
 		Host: getEnv("DB_HOST", "localhost"), Port: getEnv("DB_PORT", "5432"),
-		User: getEnv("DB_USER", "nusaroute"), Password: getEnv("DB_PASSWORD", "nusaroute_secret"),
+		User: getEnv("DB_USER", "nusaroute"), Password: getEnv("DB_PASSWORD", ""),
 		DBName: getEnv("DB_NAME", "nusaroute_dispatch"),
 	})
-	if err != nil { log.Fatalf("DB failed: %v", err) }
+	if err != nil { logger.Log.Fatal(fmt.Sprintf("DB failed: %v", err)) }
 	defer db.Close()
 
 	producer := kafka.NewProducer(kafkaBrokers)
@@ -39,6 +44,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	var wg sync.WaitGroup
 
 	// Background: monitor courier no-shows
 	go dispatchSvc.RunNoShowMonitor(ctx)
@@ -49,12 +55,13 @@ func main() {
 		func(ctx context.Context, key, value []byte) error {
 			var evt events.OrderReadyForPickupEvent
 			if err := json.Unmarshal(value, &evt); err != nil { return err }
-			log.Printf("[Dispatch] Order ready for pickup: %s", evt.OrderID)
+			logger.Info(context.Background(), fmt.Sprintf("[Dispatch] Order ready for pickup: %s", evt.OrderID))
 			return dispatchSvc.AutoAssign(ctx, evt.OrderID, evt.AWB, evt.PickupLat, evt.PickupLng, evt.PickupAddr)
 		})
 	defer consumerGroup.CloseAll()
 
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("GET /api/v1/dispatch/assignments", func(w http.ResponseWriter, r *http.Request) {
 		status := r.URL.Query().Get("status")
 		assignments, err := dispatchSvc.ListAssignments(r.Context(), status, 1, 50)
@@ -69,9 +76,10 @@ func main() {
 	h = middleware.CORS(h)
 	h = middleware.Logging(h)
 	h = middleware.Recovery(h)
+	h = middleware.Metrics(h)
 
-	log.Printf("✅ Dispatch Service running on port %s", port)
-	if err := http.ListenAndServe(":"+port, h); err != nil { log.Fatalf("Server failed: %v", err) }
+	logger.Info(context.Background(), fmt.Sprintf("✅ Dispatch Service running on port %s", port))
+	if err := http.ListenAndServe(":"+port, h); err != nil { logger.Log.Fatal(fmt.Sprintf("Server failed: %v", err)) }
 }
 
 func getEnv(key, def string) string {

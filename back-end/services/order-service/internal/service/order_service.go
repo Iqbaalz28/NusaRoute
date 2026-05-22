@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
+	"github.com/nusaroute/pkg/logger"
 	"github.com/nusaroute/services/order-service/internal/model"
 	"github.com/nusaroute/services/order-service/internal/repository"
 )
@@ -95,18 +96,17 @@ func (s *orderService) CancelOrder(ctx context.Context, orderID, userID string) 
 		return errors.New("order cannot be cancelled in current status")
 	}
 
-	if err := s.repo.MarkCancelled(ctx, orderID); err != nil {
-		return err
-	}
-
 	event := events.OrderCancelledEvent{
 		BaseEvent: events.BaseEvent{
 			EventID: uuid.New().String(), EventType: events.TopicOrderCancelled,
-			Timestamp: time.Now(), Source: "order-service",
-		},
+			Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
 		OrderID: orderID, Reason: "Cancelled by user",
 	}
-	s.publish(ctx, events.TopicOrderCancelled, orderID, event)
+
+	if err := s.repo.MarkCancelled(ctx, orderID, events.TopicOrderCancelled, event); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -116,30 +116,29 @@ func (s *orderService) HandlePaymentSuccess(ctx context.Context, orderID string)
 		return err
 	}
 
-	if err := s.repo.UpdateStatus(ctx, orderID, events.OrderStatusReadyForPickup, "Payment confirmed", "payment-service"); err != nil {
-		return err
-	}
-
 	event := events.OrderReadyForPickupEvent{
 		BaseEvent: events.BaseEvent{
 			EventID: uuid.New().String(), EventType: events.TopicOrderReadyForPickup,
-			Timestamp: time.Now(), Source: "order-service",
-		},
+			Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
 		OrderID: orderID, AWB: order.AWB, SenderID: order.UserID,
 		PickupLat: order.SenderLat, PickupLng: order.SenderLng, PickupAddr: order.SenderAddress,
 		ReceiverAddr: order.ReceiverAddress, ReceiverLat: order.ReceiverLat, ReceiverLng: order.ReceiverLng,
 		Weight: order.WeightKg, ServiceType: order.ServiceType,
 	}
-	return s.publish(ctx, events.TopicOrderReadyForPickup, orderID, event)
+
+	if err := s.repo.UpdateStatus(ctx, orderID, events.OrderStatusReadyForPickup, "Payment confirmed", "payment-service", events.TopicOrderReadyForPickup, event); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *orderService) HandleDeliveryFailed(ctx context.Context, orderID string, attempts int) error {
 	if attempts >= events.MaxDeliveryAttempts {
-		s.repo.UpdateStatus(ctx, orderID, events.OrderStatusReturnToSender, "Max delivery attempts reached", "system")
+		s.repo.UpdateStatus(ctx, orderID, events.OrderStatusReturnToSender, "Max delivery attempts reached", "system", "", nil)
 		log.Printf("[Order] ⚠️ Order %s → RETURN_TO_SENDER after %d failed attempts", orderID, attempts)
 	} else {
-		s.repo.UpdateStatus(ctx, orderID, events.OrderStatusDeliveryFailed,
-			fmt.Sprintf("Delivery attempt %d failed", attempts), "system")
+		s.repo.UpdateStatus(ctx, orderID, events.OrderStatusDeliveryFailed, fmt.Sprintf("Delivery attempt %d failed", attempts), "system", "", nil)
 	}
 	return s.repo.IncrementDeliveryAttempts(ctx, orderID)
 }
@@ -166,7 +165,7 @@ func (s *orderService) RunSLAMonitor(ctx context.Context) {
 
 			for _, order := range stuckOrders {
 				log.Printf("[SLA] ⚠️ Package LOST suspected: AWB=%s, stuck since %v", order.AWB, order.UpdatedAt)
-				s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusLostSuspected, "No scan for 48+ hours", "sla-monitor")
+				s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusLostSuspected, "No scan for 48+ hours", "sla-monitor", "", nil)
 
 				event := events.PackageLostSuspectedEvent{
 					BaseEvent: events.BaseEvent{
@@ -200,16 +199,13 @@ func (s *orderService) RunPaymentExpiryChecker(ctx context.Context) {
 
 			for _, order := range expired {
 				log.Printf("[Saga] Auto-cancelling expired order AWB=%s (created %v)", order.AWB, order.CreatedAt)
-				s.repo.MarkCancelled(ctx, order.ID)
-
 				event := events.OrderCancelledEvent{
 					BaseEvent: events.BaseEvent{
 						EventID: uuid.New().String(), EventType: events.TopicOrderCancelled,
-						Timestamp: time.Now(), Source: "order-service",
-					},
+						Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
 					OrderID: order.ID, Reason: "Payment timeout (24h expired)",
 				}
-				s.publish(ctx, events.TopicOrderCancelled, order.ID, event)
+				s.repo.MarkCancelled(ctx, order.ID, events.TopicOrderCancelled, event)
 			}
 		}
 	}

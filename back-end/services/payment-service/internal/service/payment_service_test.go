@@ -50,11 +50,11 @@ func (m *MockPaymentRepository) UpdateStatus(ctx context.Context, id, status str
 	return errors.New("not found")
 }
 
-func (m *MockPaymentRepository) MarkPaid(ctx context.Context, id string) error {
+func (m *MockPaymentRepository) MarkPaid(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error {
 	return m.UpdateStatus(ctx, id, model.PaymentStatusPaid)
 }
 
-func (m *MockPaymentRepository) MarkFailed(ctx context.Context, id string) error {
+func (m *MockPaymentRepository) MarkFailed(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error {
 	return m.UpdateStatus(ctx, id, model.PaymentStatusFailed)
 }
 

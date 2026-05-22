@@ -1,6 +1,11 @@
 pipeline {
     agent any
     
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    
     environment {
         REGISTRY = 'nusaroute'
         GO_VERSION = '1.23'
@@ -28,6 +33,7 @@ pipeline {
             steps {
                 dir('back-end') {
                     sh '''
+                        set -e
                         echo "Running unit tests for all services..."
                         
                         SERVICES="user-service payment-service pricing-service order-service \
@@ -71,6 +77,7 @@ pipeline {
             steps {
                 dir('back-end') {
                     sh '''
+                        set -e
                         echo "Running go vet..."
                         
                         SERVICES="user-service payment-service pricing-service order-service \

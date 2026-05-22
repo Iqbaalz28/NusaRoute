@@ -1,9 +1,10 @@
 package service
 
 import (
+	"fmt"
+	"github.com/nusaroute/pkg/logger"
 	"context"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,23 +47,21 @@ func (s *hubService) Scan(ctx context.Context, req model.ScanRequest) (*model.Sc
 		AWB: req.AWB, OrderID: req.OrderID, HubID: req.HubID,
 		ScanType: req.ScanType, OperatorID: req.OperatorID, Note: req.Note,
 	}
-	if err := s.repo.CreateScanLog(ctx, scan); err != nil {
-		return nil, err
-	}
-
 	// Publish event to Kafka — this is the "Event Factory"
 	event := events.PackageScannedAtHubEvent{
 		BaseEvent: events.BaseEvent{
 			EventID: uuid.New().String(), EventType: events.TopicPackageScannedHub,
-			Timestamp: time.Now(), Source: "hub-service",
-		},
+			Timestamp: time.Now(), Source: "hub-service", TraceID: logger.GetTraceID(ctx)},
 		OrderID: req.OrderID, AWB: req.AWB,
 		HubID: req.HubID, HubName: hub.Name,
 		ScanType: req.ScanType, OperatorID: req.OperatorID,
 	}
-	s.producer.Publish(ctx, events.TopicPackageScannedHub, req.AWB, event)
 
-	log.Printf("[Hub] 📦 Scan %s: AWB=%s at hub=%s by operator=%s", req.ScanType, req.AWB, hub.Name, req.OperatorID)
+	if err := s.repo.CreateScanLog(ctx, scan, events.TopicPackageScannedHub, event); err != nil {
+		return nil, err
+	}
+
+	logger.Info(context.Background(), fmt.Sprintf("[Hub] 📦 Scan %s: AWB=%s at hub=%s by operator=%s", req.ScanType, req.AWB, hub.Name, req.OperatorID))
 	return scan, nil
 }
 

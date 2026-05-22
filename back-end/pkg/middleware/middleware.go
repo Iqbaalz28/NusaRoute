@@ -3,12 +3,14 @@ package middleware
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/nusaroute/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // contextKey is unexported to prevent collisions.
@@ -105,21 +107,35 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	}
 }
 
-// Logging middleware logs incoming HTTP requests.
+// Logging middleware logs incoming HTTP requests and injects TraceID.
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
+		// Get or generate TraceID
+		traceID := r.Header.Get("X-Trace-ID")
+		if traceID == "" {
+			traceID = uuid.New().String()
+		}
+
+		// Inject TraceID into context
+		ctx := context.WithValue(r.Context(), "TraceID", traceID)
+		r = r.WithContext(ctx)
+
+		// Set response header for client tracing
+		w.Header().Set("X-Trace-ID", traceID)
 
 		// Wrap ResponseWriter to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
 
-		log.Printf("[HTTP] %s %s %d %s %s",
-			r.Method,
-			r.URL.Path,
-			wrapped.statusCode,
-			time.Since(start),
-			r.RemoteAddr,
+		logger.Info(ctx, "HTTP Request",
+			zap.String("method", r.Method),
+			zap.String("path", r.URL.Path),
+			zap.Int("status", wrapped.statusCode),
+			zap.Duration("latency", time.Since(start)),
+			zap.String("ip", r.RemoteAddr),
+			zap.String("user_agent", r.UserAgent()),
 		)
 	})
 }
@@ -129,7 +145,11 @@ func Recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Printf("[PANIC] %s %s: %v", r.Method, r.URL.Path, err)
+				logger.Error(r.Context(), "Panic recovered",
+					zap.String("method", r.Method),
+					zap.String("path", r.URL.Path),
+					zap.Any("error", err),
+				)
 				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 			}
 		}()

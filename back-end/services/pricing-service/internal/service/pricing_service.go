@@ -1,11 +1,11 @@
 package service
 
 import (
+	"github.com/nusaroute/pkg/logger"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"time"
 
@@ -52,7 +52,7 @@ func (s *pricingService) Calculate(ctx context.Context, req model.PriceCalculati
 		if err == nil {
 			var resp model.PriceCalculationResponse
 			if json.Unmarshal([]byte(cached), &resp) == nil {
-				log.Printf("[Pricing] Cache HIT for %s", cacheKey)
+				logger.Info(context.Background(), fmt.Sprintf("[Pricing] Cache HIT for %s", cacheKey))
 				return &resp, nil
 			}
 		}

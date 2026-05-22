@@ -1,9 +1,12 @@
 package main
 
 import (
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"sync"
+	"fmt"
+	"github.com/nusaroute/pkg/logger"
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -15,30 +18,34 @@ import (
 	"github.com/nusaroute/pkg/middleware"
 	"github.com/nusaroute/pkg/response"
 	"github.com/nusaroute/services/tracking-service/internal/model"
+	"github.com/nusaroute/services/tracking-service/internal/repository"
 	"github.com/nusaroute/services/tracking-service/internal/service"
 )
 
 func main() {
-	log.Println("🚀 Starting NusaRoute Tracking Service...")
+	logger.InitLogger("tracking-service")
+	logger.Info(context.Background(), fmt.Sprint("🚀 Starting NusaRoute Tracking Service..."))
 	port := getEnv("PORT", "8008")
 	kafkaBrokers := strings.Split(getEnv("KAFKA_BROKERS", "localhost:9092"), ",")
 
 	mongoDB, err := database.ConnectMongo(database.MongoConfig{
-		URI: getEnv("MONGO_URI", "mongodb://nusaroute:nusaroute_secret@localhost:27017"),
+		URI: getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		DBName: getEnv("MONGO_DB", "nusaroute_tracking"),
 	})
-	if err != nil { log.Fatalf("MongoDB failed: %v", err) }
+	if err != nil { logger.Log.Fatal(fmt.Sprintf("MongoDB failed: %v", err)) }
 
 	redisClient, err := database.ConnectRedis(database.RedisConfig{
 		Addr: getEnv("REDIS_ADDR", "localhost:6379"),
-		Password: getEnv("REDIS_PASSWORD", "nusaroute_secret"),
+		Password: getEnv("REDIS_PASSWORD", ""),
 	})
-	if err != nil { log.Printf("Redis unavailable: %v", err) }
+	if err != nil { logger.Info(context.Background(), fmt.Sprintf("Redis unavailable: %v", err)) }
 
-	trackingSvc := service.NewTrackingService(mongoDB, redisClient)
+	repo := repository.NewTrackingRepository(mongoDB, redisClient)
+	trackingSvc := service.NewTrackingService(repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	var wg sync.WaitGroup
 
 	// Kafka consumers — consume ALL status events and record in immutable ledger
 	cg := kafka.NewConsumerGroup()
@@ -103,6 +110,7 @@ func main() {
 
 	// HTTP endpoints
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("GET /api/v1/tracking/", func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(r.URL.Path, "/")
 		awb := parts[len(parts)-1]
@@ -126,9 +134,10 @@ func main() {
 	h = middleware.CORS(h)
 	h = middleware.Logging(h)
 	h = middleware.Recovery(h)
+	h = middleware.Metrics(h)
 
-	log.Printf("✅ Tracking Service running on port %s", port)
-	if err := http.ListenAndServe(":"+port, h); err != nil { log.Fatalf("Server failed: %v", err) }
+	logger.Info(context.Background(), fmt.Sprintf("✅ Tracking Service running on port %s", port))
+	if err := http.ListenAndServe(":"+port, h); err != nil { logger.Log.Fatal(fmt.Sprintf("Server failed: %v", err)) }
 }
 
 func getEnv(key, def string) string {

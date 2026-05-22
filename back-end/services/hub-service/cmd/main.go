@@ -1,8 +1,13 @@
 package main
 
 import (
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"time"
+	"sync"
+	"context"
+	"fmt"
+	"github.com/nusaroute/pkg/logger"
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -17,16 +22,17 @@ import (
 )
 
 func main() {
-	log.Println("🚀 Starting NusaRoute Hub Service...")
+	logger.InitLogger("hub-service")
+	logger.Info(context.Background(), fmt.Sprint("🚀 Starting NusaRoute Hub Service..."))
 	port := getEnv("PORT", "8007")
 	kafkaBrokers := strings.Split(getEnv("KAFKA_BROKERS", "localhost:9092"), ",")
 
 	db, err := database.ConnectPostgres(database.PostgresConfig{
 		Host: getEnv("DB_HOST", "localhost"), Port: getEnv("DB_PORT", "5432"),
-		User: getEnv("DB_USER", "nusaroute"), Password: getEnv("DB_PASSWORD", "nusaroute_secret"),
+		User: getEnv("DB_USER", "nusaroute"), Password: getEnv("DB_PASSWORD", ""),
 		DBName: getEnv("DB_NAME", "nusaroute_hub"),
 	})
-	if err != nil { log.Fatalf("DB failed: %v", err) }
+	if err != nil { logger.Log.Fatal(fmt.Sprintf("DB failed: %v", err)) }
 	defer db.Close()
 
 	producer := kafka.NewProducer(kafkaBrokers)
@@ -35,7 +41,11 @@ func main() {
 	hubRepo := repository.NewHubRepository(db)
 	hubSvc := service.NewHubService(hubRepo, producer)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var wg sync.WaitGroup
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("POST /api/v1/hub/scan/inbound", func(w http.ResponseWriter, r *http.Request) {
 		var req model.ScanRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil { response.BadRequest(w, "invalid body"); return }
@@ -80,9 +90,10 @@ func main() {
 	h = middleware.CORS(h)
 	h = middleware.Logging(h)
 	h = middleware.Recovery(h)
+	h = middleware.Metrics(h)
 
-	log.Printf("✅ Hub Service running on port %s", port)
-	if err := http.ListenAndServe(":"+port, h); err != nil { log.Fatalf("Server failed: %v", err) }
+	logger.Info(context.Background(), fmt.Sprintf("✅ Hub Service running on port %s", port))
+	if err := http.ListenAndServe(":"+port, h); err != nil { logger.Log.Fatal(fmt.Sprintf("Server failed: %v", err)) }
 }
 
 func getEnv(key, def string) string {

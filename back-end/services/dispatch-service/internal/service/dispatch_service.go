@@ -1,11 +1,11 @@
 package service
 
 import (
+	"github.com/nusaroute/pkg/logger"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net/http"
 	"time"
@@ -48,7 +48,7 @@ func (s *dispatchService) AutoAssign(ctx context.Context, orderID, awb string, p
 	// Call Courier Service to get available couriers near pickup location
 	couriers, err := s.fetchAvailableCouriers(pickupLat, pickupLng, 15.0) // 15km radius
 	if err != nil || len(couriers) == 0 {
-		log.Printf("[Dispatch] No available couriers near (%.4f, %.4f) for order %s", pickupLat, pickupLng, orderID)
+		logger.Info(context.Background(), fmt.Sprintf("[Dispatch] No available couriers near (%.4f, %.4f) for order %s", pickupLat, pickupLng, orderID))
 		return fmt.Errorf("no available couriers found")
 	}
 
@@ -69,24 +69,22 @@ func (s *dispatchService) AutoAssign(ctx context.Context, orderID, awb string, p
 		CourierID: bestCourier.ID, CourierName: bestCourier.FullName,
 		PickupLat: pickupLat, PickupLng: pickupLng, PickupAddr: pickupAddr,
 	}
-	if err := s.repo.CreateAssignment(ctx, assignment); err != nil {
-		return fmt.Errorf("failed to create assignment: %w", err)
-	}
-
 	// Publish CourierAssigned event
 	event := events.CourierAssignedEvent{
 		BaseEvent: events.BaseEvent{
 			EventID: uuid.New().String(), EventType: events.TopicCourierAssigned,
-			Timestamp: time.Now(), Source: "dispatch-service",
-		},
+			Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
 		OrderID: orderID, AWB: awb,
 		CourierID: bestCourier.ID, CourierName: bestCourier.FullName,
 		CourierPhone: bestCourier.Phone,
 		EstimatedPickupTime: time.Now().Add(30 * time.Minute),
 	}
-	s.producer.Publish(ctx, events.TopicCourierAssigned, orderID, event)
 
-	log.Printf("[Dispatch] ✅ Assigned courier %s (%.1fkm away) to order %s", bestCourier.FullName, bestDist, orderID)
+	if err := s.repo.CreateAssignment(ctx, assignment, events.TopicCourierAssigned, event); err != nil {
+		return fmt.Errorf("failed to create assignment: %w", err)
+	}
+
+	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ✅ Assigned courier %s (%.1fkm away) to order %s", bestCourier.FullName, bestDist, orderID))
 	return nil
 }
 
@@ -94,7 +92,7 @@ func (s *dispatchService) ManualAssign(ctx context.Context, req model.ManualAssi
 	assignment := &model.Assignment{
 		OrderID: req.OrderID, CourierID: req.CourierID,
 	}
-	return s.repo.CreateAssignment(ctx, assignment)
+	return s.repo.CreateAssignment(ctx, assignment, "", nil)
 }
 
 func (s *dispatchService) ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error) {
@@ -113,28 +111,25 @@ func (s *dispatchService) RunNoShowMonitor(ctx context.Context) {
 		case <-ctx.Done(): return
 		case <-ticker.C:
 			noShows, err := s.repo.GetNoShowAssignments(ctx, 2*time.Hour)
-			if err != nil { log.Printf("[Dispatch] NoShow check error: %v", err); continue }
+			if err != nil { logger.Info(context.Background(), fmt.Sprintf("[Dispatch] NoShow check error: %v", err)); continue }
 
 			for _, a := range noShows {
-				log.Printf("[Dispatch] ⚠️ Courier %s no-show for order %s, reassigning...", a.CourierID, a.OrderID)
-				s.repo.UpdateStatus(ctx, a.ID, model.AssignmentStatusNoShow)
+				logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ⚠️ Courier %s no-show for order %s, reassigning...", a.CourierID, a.OrderID))
+				event := events.CourierReassignedEvent{
+					BaseEvent: events.BaseEvent{
+						EventID: uuid.New().String(), EventType: events.TopicCourierReassigned,
+						Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
+					OrderID: a.OrderID, OldCourierID: a.CourierID,
+					Reason: "No-show: courier did not pick up within 2 hours",
+				}
+				s.repo.UpdateStatus(ctx, a.ID, model.AssignmentStatusNoShow, events.TopicCourierReassigned, event)
 
 				// Try to reassign to another courier
 				err := s.AutoAssign(ctx, a.OrderID, a.AWB, a.PickupLat, a.PickupLng, a.PickupAddr)
 				if err != nil {
-					log.Printf("[Dispatch] Failed to reassign order %s: %v", a.OrderID, err)
+					logger.Info(context.Background(), fmt.Sprintf("[Dispatch] Failed to reassign order %s: %v", a.OrderID, err))
 					continue
 				}
-
-				event := events.CourierReassignedEvent{
-					BaseEvent: events.BaseEvent{
-						EventID: uuid.New().String(), EventType: events.TopicCourierReassigned,
-						Timestamp: time.Now(), Source: "dispatch-service",
-					},
-					OrderID: a.OrderID, OldCourierID: a.CourierID,
-					Reason: "No-show: courier did not pick up within 2 hours",
-				}
-				s.producer.Publish(ctx, events.TopicCourierReassigned, a.OrderID, event)
 			}
 		}
 	}

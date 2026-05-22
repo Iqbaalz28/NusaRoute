@@ -53,7 +53,7 @@ func (m *MockOrderRepository) GetByUserID(ctx context.Context, userID string, pa
 	return result, int64(len(result)), nil
 }
 
-func (m *MockOrderRepository) UpdateStatus(ctx context.Context, id, status, note, createdBy string) error {
+func (m *MockOrderRepository) UpdateStatus(ctx context.Context, id, status, note, createdBy, outboxTopic string, outboxPayload interface{}) error {
 	if o, ok := m.orders[id]; ok { o.Status = status; return nil }
 	return errors.New("not found")
 }
@@ -78,7 +78,7 @@ func (m *MockOrderRepository) MarkDelivered(ctx context.Context, id string) erro
 	return errors.New("not found")
 }
 
-func (m *MockOrderRepository) MarkCancelled(ctx context.Context, id string) error {
+func (m *MockOrderRepository) MarkCancelled(ctx context.Context, id, outboxTopic string, outboxPayload interface{}) error {
 	if o, ok := m.orders[id]; ok { o.Status = events.OrderStatusCancelled; return nil }
 	return errors.New("not found")
 }

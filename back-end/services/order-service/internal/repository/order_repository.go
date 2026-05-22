@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/nusaroute/pkg/events"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/services/order-service/internal/model"
 )
 
@@ -17,13 +18,13 @@ type OrderRepository interface {
 	GetByID(ctx context.Context, id string) (*model.Order, error)
 	GetByAWB(ctx context.Context, awb string) (*model.Order, error)
 	GetByUserID(ctx context.Context, userID string, page, perPage int) ([]model.Order, int64, error)
-	UpdateStatus(ctx context.Context, id, status, note, createdBy string) error
+	UpdateStatus(ctx context.Context, id, status, note, createdBy, outboxTopic string, outboxPayload interface{}) error
 	SetCourier(ctx context.Context, orderID, courierID string) error
 	IncrementDeliveryAttempts(ctx context.Context, orderID string) error
 	GetStuckOrders(ctx context.Context, olderThan time.Duration) ([]model.Order, error)
 	GetExpiredPendingOrders(ctx context.Context, olderThan time.Duration) ([]model.Order, error)
 	MarkDelivered(ctx context.Context, id string) error
-	MarkCancelled(ctx context.Context, id string) error
+	MarkCancelled(ctx context.Context, id, outboxTopic string, outboxPayload interface{}) error
 }
 
 // orderRepo is the PostgreSQL implementation of OrderRepository.
@@ -118,7 +119,7 @@ func (r *orderRepo) GetByUserID(ctx context.Context, userID string, page, perPag
 	return orders, total, nil
 }
 
-func (r *orderRepo) UpdateStatus(ctx context.Context, id, status, note, createdBy string) error {
+func (r *orderRepo) UpdateStatus(ctx context.Context, id, status, note, createdBy, outboxTopic string, outboxPayload interface{}) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
@@ -142,6 +143,12 @@ func (r *orderRepo) UpdateStatus(ctx context.Context, id, status, note, createdB
 	)
 	if err != nil {
 		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()
@@ -224,7 +231,7 @@ func (r *orderRepo) MarkDelivered(ctx context.Context, id string) error {
 	return tx.Commit()
 }
 
-func (r *orderRepo) MarkCancelled(ctx context.Context, id string) error {
+func (r *orderRepo) MarkCancelled(ctx context.Context, id, outboxTopic string, outboxPayload interface{}) error {
 	now := time.Now()
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -247,6 +254,12 @@ func (r *orderRepo) MarkCancelled(ctx context.Context, id string) error {
 	)
 	if err != nil {
 		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()

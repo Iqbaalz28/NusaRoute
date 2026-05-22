@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/services/payment-service/internal/model"
 )
 
@@ -15,8 +16,8 @@ type PaymentRepository interface {
 	GetByOrderID(ctx context.Context, orderID string) (*model.Transaction, error)
 	GetByIdempotencyKey(ctx context.Context, key string) (*model.Transaction, error)
 	UpdateStatus(ctx context.Context, id, status string) error
-	MarkPaid(ctx context.Context, id string) error
-	MarkFailed(ctx context.Context, id string) error
+	MarkPaid(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error
+	MarkFailed(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error
 	MarkRefunded(ctx context.Context, id string) error
 }
 
@@ -69,20 +70,52 @@ func (r *paymentRepo) UpdateStatus(ctx context.Context, id, status string) error
 	return err
 }
 
-func (r *paymentRepo) MarkPaid(ctx context.Context, id string) error {
+func (r *paymentRepo) MarkPaid(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	now := time.Now()
-	_, err := r.db.ExecContext(ctx,
+	_, err = tx.ExecContext(ctx,
 		"UPDATE transactions SET status = $1, paid_at = $2, updated_at = $3 WHERE id = $4",
 		model.PaymentStatusPaid, now, now, id)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
-func (r *paymentRepo) MarkFailed(ctx context.Context, id string) error {
+func (r *paymentRepo) MarkFailed(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	now := time.Now()
-	_, err := r.db.ExecContext(ctx,
+	_, err = tx.ExecContext(ctx,
 		"UPDATE transactions SET status = $1, failed_at = $2, updated_at = $3 WHERE id = $4",
 		model.PaymentStatusFailed, now, now, id)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *paymentRepo) MarkRefunded(ctx context.Context, id string) error {

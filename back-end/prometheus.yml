@@ -1,0 +1,48 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8080']
+
+  - job_name: 'user-service'
+    static_configs:
+      - targets: ['user-service:8001']
+
+  - job_name: 'payment-service'
+    static_configs:
+      - targets: ['payment-service:8002']
+
+  - job_name: 'pricing-service'
+    static_configs:
+      - targets: ['pricing-service:8003']
+
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service:8004']
+
+  - job_name: 'courier-service'
+    static_configs:
+      - targets: ['courier-service:8005']
+
+  - job_name: 'dispatch-service'
+    static_configs:
+      - targets: ['dispatch-service:8006']
+
+  - job_name: 'hub-service'
+    static_configs:
+      - targets: ['hub-service:8007']
+
+  - job_name: 'tracking-service'
+    static_configs:
+      - targets: ['tracking-service:8008']
+
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:8009']
+
+  - job_name: 'resolution-service'
+    static_configs:
+      - targets: ['resolution-service:8010']

@@ -1,16 +1,16 @@
-go 1.23
+go 1.23.0
 
 use (
-	./pkg
 	./api-gateway
-	./services/user-service
-	./services/payment-service
-	./services/pricing-service
-	./services/order-service
+	./pkg
 	./services/courier-service
 	./services/dispatch-service
 	./services/hub-service
-	./services/tracking-service
 	./services/notification-service
+	./services/order-service
+	./services/payment-service
+	./services/pricing-service
 	./services/resolution-service
+	./services/tracking-service
+	./services/user-service
 )

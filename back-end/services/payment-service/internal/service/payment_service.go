@@ -1,10 +1,10 @@
 package service
 
 import (
+	"github.com/nusaroute/pkg/logger"
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,7 +40,7 @@ func (s *paymentService) InitiatePayment(ctx context.Context, req model.Initiate
 	// Check for existing transaction with same idempotency key (prevent duplicate)
 	existing, _ := s.repo.GetByIdempotencyKey(ctx, idempotencyKey)
 	if existing != nil {
-		log.Printf("[Payment] Idempotent request detected for order %s, returning existing transaction", req.OrderID)
+		logger.Info(context.Background(), fmt.Sprintf("[Payment] Idempotent request detected for order %s, returning existing transaction", req.OrderID))
 		return existing, nil
 	}
 
@@ -65,7 +65,7 @@ func (s *paymentService) HandleWebhook(ctx context.Context, payload model.Webhoo
 	// Idempotency check: if already processed, skip
 	existing, _ := s.repo.GetByIdempotencyKey(ctx, payload.IdempotencyKey)
 	if existing != nil && existing.Status != model.PaymentStatusPending {
-		log.Printf("[Payment] Webhook already processed for key=%s, skipping", payload.IdempotencyKey)
+		logger.Info(context.Background(), fmt.Sprintf("[Payment] Webhook already processed for key=%s, skipping", payload.IdempotencyKey))
 		return nil // Idempotent - already processed
 	}
 
@@ -77,49 +77,39 @@ func (s *paymentService) HandleWebhook(ctx context.Context, payload model.Webhoo
 
 	switch payload.Status {
 	case "PAID":
-		if err := s.repo.MarkPaid(ctx, tx.ID); err != nil {
-			return fmt.Errorf("failed to mark as paid: %w", err)
-		}
-
-		// Publish PaymentSuccess event to Kafka
 		event := events.PaymentSuccessEvent{
 			BaseEvent: events.BaseEvent{
 				EventID:   uuid.New().String(),
 				EventType: events.TopicPaymentSuccess,
 				Timestamp: time.Now(),
-				Source:    "payment-service",
-			},
+				Source:    "payment-service", TraceID: logger.GetTraceID(ctx)},
 			OrderID:       tx.OrderID,
 			TransactionID: tx.ID,
 			Amount:        tx.Amount,
 			Method:        tx.Method,
 		}
 
-		if err := s.producer.Publish(ctx, events.TopicPaymentSuccess, tx.OrderID, event); err != nil {
-			log.Printf("[Payment] Failed to publish payment success event: %v", err)
-			// Don't fail the webhook — event will be retried
+		if err := s.repo.MarkPaid(ctx, tx.ID, events.TopicPaymentSuccess, event); err != nil {
+			return fmt.Errorf("failed to mark as paid and save outbox: %w", err)
 		}
 
-		log.Printf("[Payment] ✅ Payment confirmed for order %s (amount: %.2f)", tx.OrderID, tx.Amount)
+		logger.Info(context.Background(), fmt.Sprintf("[Payment] ✅ Payment confirmed for order %s (amount: %.2f) - Event saved to outbox", tx.OrderID, tx.Amount))
 
 	case "FAILED":
-		if err := s.repo.MarkFailed(ctx, tx.ID); err != nil {
-			return fmt.Errorf("failed to mark as failed: %w", err)
-		}
-
 		event := events.PaymentFailedEvent{
 			BaseEvent: events.BaseEvent{
 				EventID:   uuid.New().String(),
 				EventType: events.TopicPaymentFailed,
 				Timestamp: time.Now(),
-				Source:    "payment-service",
-			},
+				Source:    "payment-service", TraceID: logger.GetTraceID(ctx)},
 			OrderID: tx.OrderID,
 			Reason:  "Payment declined by gateway",
 		}
 
-		s.producer.Publish(ctx, events.TopicPaymentFailed, tx.OrderID, event)
-		log.Printf("[Payment] ❌ Payment failed for order %s", tx.OrderID)
+		if err := s.repo.MarkFailed(ctx, tx.ID, events.TopicPaymentFailed, event); err != nil {
+			return fmt.Errorf("failed to mark as failed and save outbox: %w", err)
+		}
+		logger.Info(context.Background(), fmt.Sprintf("[Payment] ❌ Payment failed for order %s - Event saved to outbox", tx.OrderID))
 
 	default:
 		return fmt.Errorf("unknown payment status: %s", payload.Status)

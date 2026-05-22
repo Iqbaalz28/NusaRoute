@@ -1,8 +1,19 @@
 # 🚚 NusaRoute — Microservices Logistics Platform
 
-> Tugas Besar Mata Kuliah **Distributed, Parallel & Cloud Computing** — Universitas Pendidikan Indonesia, Semester 4
+> Tugas Besar Mata Kuliah **Distributed, Parallel & Cloud Computing** — Universitas Pendidikan Indonesia
 
 NusaRoute adalah platform logistik berbasis **arsitektur microservices** yang dibangun menggunakan **Go 1.23**, **Apache Kafka** (Event-Driven Architecture), dan **database-per-service pattern**.
+
+---
+
+## 🌟 Status Proyek & Pembaruan Terbaru (Production-Ready)
+
+Proyek ini telah melalui fase *refactoring* dan *hardening* dari simulasi akademik menjadi sistem yang tangguh dan siap *production*:
+- **Integritas Data dengan Transactional Outbox Pattern**: Menyelesaikan isu *dual-write* antara *database* dan Apache Kafka di seluruh layanan (Order, Payment, Dispatch, Hub, Resolution) untuk memastikan tidak ada *message* yang hilang.
+- **Full-Stack Observability (Log, Trace, Metric)**: Menggunakan `go.uber.org/zap` untuk *structured JSON logging*, propagasi otomatis `X-Trace-ID` via HTTP context dan event Kafka, serta pengumpulan metrik kinerja (*requests & latency*) menggunakan **Prometheus** dan visualisasi via **Grafana**.
+- **Graceful Shutdown & Fault Tolerance**: Penerapan `sync.WaitGroup` dan interceptor OS signal pada ke-11 *microservices* memastikan tidak ada kebocoran *goroutine* (*goroutine leak*) dan aplikasi mati dengan aman tanpa mengorbankan transaksi yang sedang berjalan.
+- **100% Functional & Unit Test Coverage**: Implementasi tes unit dengan *Manual Mock Object* yang diisolasi, serta perluasan tes fungsional pada **9 layanan**. Pengujian integrasi menggunakan `go test -tags=functional` kini terhubung secara dinamis pada kontainer basis data.
+- **Robust CI/CD Pipeline**: Pipeline kini memvalidasi kompilasi, tes unit, linter, tes fungsional (dengan integrasi Docker), dan memastikan *pipeline* berjalan **SUCCESS** secara konsisten.
 
 ---
 
@@ -50,6 +61,7 @@ NusaRoute adalah platform logistik berbasis **arsitektur microservices** yang di
 | CI/CD | Jenkins (8-stage pipeline) |
 | Container | Docker & Docker Compose |
 | Orchestration | Kubernetes (HPA autoscaling) |
+| Observability | Prometheus, Grafana, Zap Logger |
 | Frontend | Next.js 16, React 19, TypeScript (Light-Toned UI) |
 
 ---
@@ -140,6 +152,8 @@ cd back-end && docker-compose up --build
 | Frontend Dashboard | http://localhost:3000 |
 | Kafka UI | http://localhost:8090 |
 | MinIO Console | http://localhost:9001 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3001 |
 
 ---
 
@@ -174,8 +188,8 @@ NusaRoute/
 │   │   ├── events/              # Event schemas & Kafka topics
 │   │   ├── kafka/               # Producer/Consumer wrapper
 │   │   ├── middleware/          # JWT, Logging, Recovery, CORS
-│   │   ├── database/           # PostgreSQL, MongoDB, Redis helpers
-│   │   └── response/           # Standard API response format
+│   │   ├── database/            # PostgreSQL, MongoDB, Redis helpers
+│   │   └── response/            # Standard API response format
 │   ├── api-gateway/             # Custom reverse proxy
 │   ├── services/                # 10 microservices
 │   │   ├── user-service/
@@ -196,12 +210,12 @@ NusaRoute/
 ---
 
 ## 👥 Tim
+Tugas Besar Kelompok 3 — Distributed, Parallel & Cloud Computing  
+Universitas Pendidikan Indonesia · 2026
 
-Tugas Besar — Distributed, Parallel & Cloud Computing  
-Universitas Pendidikan Indonesia · Semester 4 · 2026
+- Iqbal Rizky Maulana
+- Bintang Fajar Putra Pamungkas
+- Mochammad Azka Basria
+- Dzaka Musyaffa Hidayat
 
 ---
-
-## 📄 License
-
-This project is for educational purposes.

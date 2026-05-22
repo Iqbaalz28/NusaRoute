@@ -40,7 +40,7 @@ func (m *MockHubRepository) ListHubs(ctx context.Context) ([]model.Hub, error) {
 	return result, nil
 }
 
-func (m *MockHubRepository) CreateScanLog(ctx context.Context, scan *model.ScanLog) error {
+func (m *MockHubRepository) CreateScanLog(ctx context.Context, scan *model.ScanLog, outboxTopic string, outboxPayload interface{}) error {
 	scan.ID = "scan-test-id"
 	scan.ScannedAt = time.Now()
 	m.scans = append(m.scans, *scan)

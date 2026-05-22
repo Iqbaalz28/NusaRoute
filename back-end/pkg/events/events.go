@@ -48,6 +48,7 @@ type BaseEvent struct {
 	EventType string    `json:"event_type"`
 	Timestamp time.Time `json:"timestamp"`
 	Source    string    `json:"source"` // service name that produced the event
+	TraceID   string    `json:"trace_id,omitempty"` // for distributed tracing
 }
 
 // PaymentSuccessEvent is published when payment is confirmed.

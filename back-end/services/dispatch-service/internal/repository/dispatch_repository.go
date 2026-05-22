@@ -6,15 +6,16 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/services/dispatch-service/internal/model"
 )
 
 type DispatchRepository interface {
-	CreateAssignment(ctx context.Context, a *model.Assignment) error
+	CreateAssignment(ctx context.Context, a *model.Assignment, outboxTopic string, outboxPayload interface{}) error
 	GetByOrderID(ctx context.Context, orderID string) (*model.Assignment, error)
 	GetActiveByOrderID(ctx context.Context, orderID string) (*model.Assignment, error)
 	ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error)
-	UpdateStatus(ctx context.Context, id, status string) error
+	UpdateStatus(ctx context.Context, id, status string, outboxTopic string, outboxPayload interface{}) error
 	GetNoShowAssignments(ctx context.Context, olderThan time.Duration) ([]model.Assignment, error)
 }
 
@@ -22,19 +23,35 @@ type dispatchRepo struct{ db *sqlx.DB }
 
 func NewDispatchRepository(db *sqlx.DB) DispatchRepository { return &dispatchRepo{db: db} }
 
-func (r *dispatchRepo) CreateAssignment(ctx context.Context, a *model.Assignment) error {
+func (r *dispatchRepo) CreateAssignment(ctx context.Context, a *model.Assignment, outboxTopic string, outboxPayload interface{}) error {
 	a.ID = uuid.New().String()
 	a.Status = model.AssignmentStatusAssigned
 	a.AssignedAt = time.Now()
 	a.CreatedAt = time.Now()
 
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	query := `INSERT INTO assignments (id, order_id, awb, courier_id, courier_name, status,
 		pickup_lat, pickup_lng, pickup_address, assigned_at, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
-	_, err := r.db.ExecContext(ctx, query,
+	_, err = tx.ExecContext(ctx, query,
 		a.ID, a.OrderID, a.AWB, a.CourierID, a.CourierName, a.Status,
 		a.PickupLat, a.PickupLng, a.PickupAddr, a.AssignedAt, a.CreatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *dispatchRepo) GetByOrderID(ctx context.Context, orderID string) (*model.Assignment, error) {
@@ -66,9 +83,25 @@ func (r *dispatchRepo) ListAssignments(ctx context.Context, status string, page,
 	return assignments, err
 }
 
-func (r *dispatchRepo) UpdateStatus(ctx context.Context, id, status string) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE assignments SET status = $1 WHERE id = $2", status, id)
-	return err
+func (r *dispatchRepo) UpdateStatus(ctx context.Context, id, status string, outboxTopic string, outboxPayload interface{}) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, "UPDATE assignments SET status = $1 WHERE id = $2", status, id)
+	if err != nil {
+		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *dispatchRepo) GetNoShowAssignments(ctx context.Context, olderThan time.Duration) ([]model.Assignment, error) {

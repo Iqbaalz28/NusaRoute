@@ -7,14 +7,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/nusaroute/pkg/events"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/services/resolution-service/internal/model"
 )
 
 type ResolutionRepository interface {
-	CreateTicket(ctx context.Context, t *model.Ticket) error
+	CreateTicket(ctx context.Context, t *model.Ticket, outboxTopic string, outboxPayload interface{}) error
 	GetTicketByID(ctx context.Context, id string) (*model.Ticket, error)
 	GetTicketsByOrderID(ctx context.Context, orderID string) ([]model.Ticket, error)
-	UpdateTicket(ctx context.Context, id string, req model.UpdateTicketRequest) error
+	UpdateTicket(ctx context.Context, id string, req model.UpdateTicketRequest, outboxTopic string, outboxPayload interface{}) error
 	ListTickets(ctx context.Context, status string, page, perPage int) ([]model.Ticket, int64, error)
 	CreateClaim(ctx context.Context, c *model.Claim) error
 	GetClaimByID(ctx context.Context, id string) (*model.Claim, error)
@@ -26,7 +27,7 @@ func NewResolutionRepository(db *sqlx.DB) ResolutionRepository {
 	return &resolutionRepo{db: db}
 }
 
-func (r *resolutionRepo) CreateTicket(ctx context.Context, t *model.Ticket) error {
+func (r *resolutionRepo) CreateTicket(ctx context.Context, t *model.Ticket, outboxTopic string, outboxPayload interface{}) error {
 	t.ID = uuid.New().String()
 	t.Status = events.ResolutionStatusOpen
 	t.CreatedAt = time.Now()
@@ -44,11 +45,27 @@ func (r *resolutionRepo) CreateTicket(ctx context.Context, t *model.Ticket) erro
 		t.Priority = "LOW"
 	}
 
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	query := `INSERT INTO tickets (id, order_id, awb, user_id, type, priority, status, description, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
-	_, err := r.db.ExecContext(ctx, query,
+	_, err = tx.ExecContext(ctx, query,
 		t.ID, t.OrderID, t.AWB, t.UserID, t.Type, t.Priority, t.Status, t.Description, t.CreatedAt, t.UpdatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *resolutionRepo) GetTicketByID(ctx context.Context, id string) (*model.Ticket, error) {
@@ -64,21 +81,33 @@ func (r *resolutionRepo) GetTicketsByOrderID(ctx context.Context, orderID string
 	return tickets, err
 }
 
-func (r *resolutionRepo) UpdateTicket(ctx context.Context, id string, req model.UpdateTicketRequest) error {
+func (r *resolutionRepo) UpdateTicket(ctx context.Context, id string, req model.UpdateTicketRequest, outboxTopic string, outboxPayload interface{}) error {
 	now := time.Now()
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	if req.Status != "" && req.Resolution != "" {
-		_, err := r.db.ExecContext(ctx,
+		_, err = tx.ExecContext(ctx,
 			"UPDATE tickets SET status = $1, resolution = $2, agent_id = $3, resolved_at = $4, updated_at = $5 WHERE id = $6",
 			req.Status, req.Resolution, req.AgentID, now, now, id)
-		return err
-	}
-	if req.Status != "" {
-		_, err := r.db.ExecContext(ctx,
+		if err != nil { return err }
+	} else if req.Status != "" {
+		_, err = tx.ExecContext(ctx,
 			"UPDATE tickets SET status = $1, agent_id = $2, updated_at = $3 WHERE id = $4",
 			req.Status, req.AgentID, now, id)
-		return err
+		if err != nil { return err }
 	}
-	return nil
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *resolutionRepo) ListTickets(ctx context.Context, status string, page, perPage int) ([]model.Ticket, int64, error) {
