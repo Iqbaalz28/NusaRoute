@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { apiGet } from "@/lib/api";
+import { Hub, ServiceInfo } from "@/lib/types";
 
 interface HeroProps {
   onTrack: (awb: string) => void;
@@ -10,6 +12,29 @@ interface HeroProps {
 export const Hero: React.FC<HeroProps> = ({ onTrack, onNavigate }) => {
   const [activeTab, setActiveTab] = useState<"track" | "hub" | "rate">("track");
   const [awb, setAwb] = useState("");
+  
+  const [hubCount, setHubCount] = useState<number | null>(null);
+  const [minPrice, setMinPrice] = useState<number | null>(null);
+  const [stats, setStats] = useState<any>(null);
+
+  useEffect(() => {
+    // Fetch quick stats independently so failure of one doesn't block the other
+    apiGet<Hub[]>('/api/v1/hub/list')
+      .then(data => setHubCount(data.length))
+      .catch(console.error);
+
+    apiGet<ServiceInfo[]>('/api/v1/pricing/services')
+      .then(data => {
+        if (data.length > 0) {
+          setMinPrice(Math.min(...data.map(s => s.base_fee)));
+        }
+      })
+      .catch(console.error);
+
+    apiGet<any>('/api/v1/dashboard/stats', { requiresAuth: true })
+      .then(data => setStats(data))
+      .catch(console.error);
+  }, []);
 
   const handleTrack = () => {
     if (awb.trim()) {
@@ -77,7 +102,7 @@ export const Hero: React.FC<HeroProps> = ({ onTrack, onNavigate }) => {
             {activeTab === 'hub' && (
               <>
                 <div className="flex-1 flex items-center justify-center bg-white rounded-full px-6 h-[52px] text-[0.9rem] text-muted">
-                   8 pusat penyortiran di seluruh Indonesia
+                   {hubCount !== null ? `${hubCount} pusat penyortiran di seluruh Indonesia` : 'Memuat data hub...'}
                 </div>
                 <button className="h-[52px] px-8 bg-primary text-white font-heading font-semibold rounded-pill hover:bg-primary-hover transition-all" onClick={() => onNavigate('hubs')}>Lihat</button>
               </>
@@ -85,7 +110,7 @@ export const Hero: React.FC<HeroProps> = ({ onTrack, onNavigate }) => {
             {activeTab === 'rate' && (
               <>
                 <div className="flex-1 flex items-center justify-center bg-white rounded-full px-6 h-[52px] text-[0.9rem] text-muted">
-                   Tarif mulai dari Rp 8.000
+                   {minPrice !== null ? `Tarif mulai dari Rp ${minPrice.toLocaleString('id-ID')}` : 'Memuat tarif...'}
                 </div>
                 <button className="h-[52px] px-8 bg-primary text-white font-heading font-semibold rounded-pill hover:bg-primary-hover transition-all" onClick={() => onNavigate('services')}>Cek</button>
               </>
@@ -93,20 +118,20 @@ export const Hero: React.FC<HeroProps> = ({ onTrack, onNavigate }) => {
           </div>
         </div>
 
-        {/* Minimal Stats Row */}
+        {/* Minimal Stats Row (Dynamic Real Data) */}
         <div className="flex justify-center gap-12 mt-12">
           <div>
-            <div className="text-xl font-bold">514</div>
+            <div className="text-xl font-bold">{stats ? stats.total_cities : '...'}</div>
             <div className="text-[0.7rem] text-muted font-semibold uppercase tracking-wider">KOTA</div>
           </div>
           <div className="w-[1px] h-[30px] bg-border"></div>
           <div>
-            <div className="text-xl font-bold">98.5%</div>
+            <div className="text-xl font-bold">{stats ? stats.sla_percentage.toFixed(1) + '%' : '...'}</div>
             <div className="text-[0.7rem] text-muted font-semibold uppercase tracking-wider">SUKSES</div>
           </div>
           <div className="w-[1px] h-[30px] bg-border"></div>
           <div>
-            <div className="text-xl font-bold">2.4k</div>
+            <div className="text-xl font-bold">{stats ? (stats.active_couriers >= 1000 ? (stats.active_couriers/1000).toFixed(1) + 'k' : stats.active_couriers) : '...'}</div>
             <div className="text-[0.7rem] text-muted font-semibold uppercase tracking-wider">KURIR</div>
           </div>
         </div>
