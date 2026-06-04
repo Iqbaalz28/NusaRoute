@@ -21,6 +21,7 @@ func (h *CourierHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/couriers/status", h.UpdateStatus)
 	mux.HandleFunc("PUT /api/v1/couriers/location", h.UpdateLocation)
 	mux.HandleFunc("GET /api/v1/couriers/available", h.GetAvailable)
+	mux.HandleFunc("GET /api/v1/couriers/stats", h.GetDashboardStats)
 	mux.HandleFunc("GET /api/v1/couriers/", h.GetByID)
 	mux.HandleFunc("GET /api/v1/couriers/health", h.Health)
 }
@@ -91,4 +92,14 @@ func (h *CourierHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	courier, err := h.svc.GetByID(r.Context(), id)
 	if err != nil { response.NotFound(w, "courier not found"); return }
 	response.Success(w, "courier retrieved", courier)
+}
+
+func (h *CourierHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
+	activeCouriers, err := h.svc.GetDashboardStats(r.Context())
+	if err != nil {
+		response.InternalError(w, err.Error()); return
+	}
+	response.Success(w, "stats retrieved", map[string]interface{}{
+		"active_couriers": activeCouriers,
+	})
 }

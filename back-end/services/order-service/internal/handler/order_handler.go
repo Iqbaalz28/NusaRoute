@@ -23,6 +23,8 @@ func NewOrderHandler(svc service.OrderService) *OrderHandler {
 func (h *OrderHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/orders", h.CreateOrder)
 	mux.HandleFunc("GET /api/v1/orders", h.ListOrders)
+	mux.HandleFunc("GET /api/v1/orders/stats", h.GetDashboardStats)
+	mux.HandleFunc("GET /api/v1/orders/volume", h.GetVolumeStats)
 	mux.HandleFunc("GET /api/v1/orders/", h.GetOrder)
 	mux.HandleFunc("PUT /api/v1/orders/", h.CancelOrder)
 	mux.HandleFunc("GET /api/v1/orders/health", h.Health)
@@ -81,4 +83,23 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error()); return
 	}
 	response.Success(w, "order cancelled", nil)
+}
+
+func (h *OrderHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
+	total, sla, err := h.svc.GetDashboardStats(r.Context())
+	if err != nil {
+		response.InternalError(w, err.Error()); return
+	}
+	response.Success(w, "stats retrieved", map[string]interface{}{
+		"total_orders_today": total,
+		"sla_percentage":     sla,
+	})
+}
+
+func (h *OrderHandler) GetVolumeStats(w http.ResponseWriter, r *http.Request) {
+	data, err := h.svc.GetVolumeStats(r.Context())
+	if err != nil {
+		response.InternalError(w, err.Error()); return
+	}
+	response.Success(w, "volume retrieved", data)
 }

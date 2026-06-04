@@ -18,6 +18,7 @@ type CourierRepository interface {
 	UpdateLocation(ctx context.Context, id string, lat, lng float64) error
 	SetAvailability(ctx context.Context, id string, available bool) error
 	IncrementDeliveries(ctx context.Context, id string) error
+	GetDashboardStats(ctx context.Context) (activeCouriers int64, err error)
 }
 
 type courierRepo struct{ db *sqlx.DB }
@@ -105,4 +106,9 @@ func (r *courierRepo) IncrementDeliveries(ctx context.Context, id string) error 
 		"UPDATE couriers SET total_deliveries = total_deliveries + 1, updated_at = $1 WHERE id = $2",
 		time.Now(), id)
 	return err
+}
+
+func (r *courierRepo) GetDashboardStats(ctx context.Context) (activeCouriers int64, err error) {
+	err = r.db.GetContext(ctx, &activeCouriers, "SELECT COUNT(*) FROM couriers WHERE is_active = true")
+	return activeCouriers, err
 }

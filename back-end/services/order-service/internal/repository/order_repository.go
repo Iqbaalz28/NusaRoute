@@ -25,6 +25,8 @@ type OrderRepository interface {
 	GetExpiredPendingOrders(ctx context.Context, olderThan time.Duration) ([]model.Order, error)
 	MarkDelivered(ctx context.Context, id string) error
 	MarkCancelled(ctx context.Context, id, outboxTopic string, outboxPayload interface{}) error
+	GetDashboardStats(ctx context.Context) (totalOrdersToday int64, slaPercentage float64, err error)
+	GetVolumeStats(ctx context.Context) ([]model.DailyVolume, error)
 }
 
 // orderRepo is the PostgreSQL implementation of OrderRepository.
@@ -264,3 +266,72 @@ func (r *orderRepo) MarkCancelled(ctx context.Context, id, outboxTopic string, o
 
 	return tx.Commit()
 }
+
+func (r *orderRepo) GetDashboardStats(ctx context.Context) (totalOrdersToday int64, slaPercentage float64, err error) {
+	today := time.Now().Truncate(24 * time.Hour)
+	tomorrow := today.Add(24 * time.Hour)
+
+	// Get total orders today
+	err = r.db.GetContext(ctx, &totalOrdersToday, "SELECT COUNT(*) FROM orders WHERE created_at >= $1 AND created_at < $2", today, tomorrow)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	// Calculate SLA (Delivered vs Total, we'll use all time or just recent)
+	var totalDelivered int64
+	err = r.db.GetContext(ctx, &totalDelivered, "SELECT COUNT(*) FROM orders WHERE status = $1", events.OrderStatusDelivered)
+	if err != nil {
+		return 0, 0, err
+	}
+	
+	var totalAll int64
+	err = r.db.GetContext(ctx, &totalAll, "SELECT COUNT(*) FROM orders")
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if totalAll > 0 {
+		slaPercentage = float64(totalDelivered) / float64(totalAll) * 100.0
+	} else {
+		slaPercentage = 100.0 // Default to 100% if no orders yet
+	}
+
+	return totalOrdersToday, slaPercentage, nil
+}
+
+func (r *orderRepo) GetVolumeStats(ctx context.Context) ([]model.DailyVolume, error) {
+	// Query for the last 7 days
+	// Using PostgreSQL generate_series to ensure we get a row for every day even if 0
+	query := `
+		WITH dates AS (
+			SELECT generate_series(
+				current_date - interval '6 days',
+				current_date,
+				'1 day'::interval
+			)::date AS date
+		)
+		SELECT 
+			to_char(d.date, 'Mon DD') as date_str,
+			COUNT(o.id) as count
+		FROM dates d
+		LEFT JOIN orders o ON DATE(o.created_at) = d.date
+		GROUP BY d.date, date_str
+		ORDER BY d.date ASC
+	`
+	rows, err := r.db.QueryxContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []model.DailyVolume
+	for rows.Next() {
+		var dv model.DailyVolume
+		if err := rows.Scan(&dv.Date, &dv.Count); err != nil {
+			return nil, err
+		}
+		result = append(result, dv)
+	}
+	return result, nil
+}
+

@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nusaroute/pkg/database"
 	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/logger"
 	"github.com/nusaroute/services/order-service/internal/model"
 	"github.com/nusaroute/services/order-service/internal/repository"
+	"github.com/redis/go-redis/v9"
 )
 
 type OrderService interface {
@@ -25,15 +27,18 @@ type OrderService interface {
 	HandlePackageDelivered(ctx context.Context, orderID string) error
 	RunSLAMonitor(ctx context.Context)
 	RunPaymentExpiryChecker(ctx context.Context)
+	GetDashboardStats(ctx context.Context) (int64, float64, error)
+	GetVolumeStats(ctx context.Context) ([]model.DailyVolume, error)
 }
 
 type orderService struct {
 	repo     repository.OrderRepository
 	producer *kafka.Producer
+	redis    *redis.Client
 }
 
-func NewOrderService(repo repository.OrderRepository, producer *kafka.Producer) OrderService {
-	return &orderService{repo: repo, producer: producer}
+func NewOrderService(repo repository.OrderRepository, producer *kafka.Producer, r *redis.Client) OrderService {
+	return &orderService{repo: repo, producer: producer, redis: r}
 }
 
 // publish safely publishes a Kafka event, skipping if producer is nil (e.g. in tests).
@@ -157,9 +162,15 @@ func (s *orderService) RunSLAMonitor(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			lock := database.NewRedisMutex(s.redis, "lock:cron:sla_monitor")
+			if !lock.Acquire(ctx, 5*time.Minute) {
+				continue // Lock not acquired, another instance is processing
+			}
+
 			stuckOrders, err := s.repo.GetStuckOrders(ctx, 48*time.Hour)
 			if err != nil {
 				log.Printf("[SLA] Error: %v", err)
+				lock.Release(ctx)
 				continue
 			}
 
@@ -177,6 +188,7 @@ func (s *orderService) RunSLAMonitor(ctx context.Context) {
 				}
 				s.publish(ctx, events.TopicPackageLost, order.ID, event)
 			}
+			lock.Release(ctx)
 		}
 	}
 }
@@ -191,9 +203,15 @@ func (s *orderService) RunPaymentExpiryChecker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			lock := database.NewRedisMutex(s.redis, "lock:cron:payment_expiry")
+			if !lock.Acquire(ctx, 14*time.Minute) {
+				continue // Lock not acquired
+			}
+
 			expired, err := s.repo.GetExpiredPendingOrders(ctx, 24*time.Hour)
 			if err != nil {
 				log.Printf("[Saga] Error: %v", err)
+				lock.Release(ctx)
 				continue
 			}
 
@@ -207,6 +225,15 @@ func (s *orderService) RunPaymentExpiryChecker(ctx context.Context) {
 				}
 				s.repo.MarkCancelled(ctx, order.ID, events.TopicOrderCancelled, event)
 			}
+			lock.Release(ctx)
 		}
 	}
+}
+
+func (s *orderService) GetDashboardStats(ctx context.Context) (int64, float64, error) {
+	return s.repo.GetDashboardStats(ctx)
+}
+
+func (s *orderService) GetVolumeStats(ctx context.Context) ([]model.DailyVolume, error) {
+	return s.repo.GetVolumeStats(ctx)
 }

@@ -19,6 +19,7 @@ type HubService interface {
 	GetScanHistory(ctx context.Context, awb string) ([]model.ScanLog, error)
 	GetManifest(ctx context.Context, hubID string) ([]model.ScanLog, error)
 	ListHubs(ctx context.Context) ([]model.Hub, error)
+	GetDashboardStats(ctx context.Context) (int64, int64, error)
 }
 
 type hubService struct {
@@ -75,4 +76,8 @@ func (s *hubService) GetManifest(ctx context.Context, hubID string) ([]model.Sca
 
 func (s *hubService) ListHubs(ctx context.Context) ([]model.Hub, error) {
 	return s.repo.ListHubs(ctx)
+}
+
+func (s *hubService) GetDashboardStats(ctx context.Context) (int64, int64, error) {
+	return s.repo.GetDashboardStats(ctx)
 }

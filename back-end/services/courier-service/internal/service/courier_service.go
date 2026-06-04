@@ -16,6 +16,7 @@ type CourierService interface {
 	UpdateOnlineStatus(ctx context.Context, courierID string, isOnline bool) error
 	UpdateLocation(ctx context.Context, courierID string, lat, lng float64) error
 	SetAvailability(ctx context.Context, courierID string, available bool) error
+	GetDashboardStats(ctx context.Context) (int64, error)
 }
 
 type courierService struct{ repo repository.CourierRepository }
@@ -65,4 +66,8 @@ func (s *courierService) UpdateLocation(ctx context.Context, courierID string, l
 
 func (s *courierService) SetAvailability(ctx context.Context, courierID string, available bool) error {
 	return s.repo.SetAvailability(ctx, courierID, available)
+}
+
+func (s *courierService) GetDashboardStats(ctx context.Context) (int64, error) {
+	return s.repo.GetDashboardStats(ctx)
 }

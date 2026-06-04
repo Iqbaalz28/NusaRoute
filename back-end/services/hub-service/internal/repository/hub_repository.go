@@ -16,6 +16,7 @@ type HubRepository interface {
 	CreateScanLog(ctx context.Context, scan *model.ScanLog, outboxTopic string, outboxPayload interface{}) error
 	GetScansByAWB(ctx context.Context, awb string) ([]model.ScanLog, error)
 	GetManifest(ctx context.Context, hubID string, date time.Time) ([]model.ScanLog, error)
+	GetDashboardStats(ctx context.Context) (activeHubs int64, totalCities int64, err error)
 }
 
 type hubRepo struct{ db *sqlx.DB }
@@ -75,4 +76,12 @@ func (r *hubRepo) GetManifest(ctx context.Context, hubID string, date time.Time)
 		"SELECT * FROM scan_logs WHERE hub_id = $1 AND scanned_at >= $2 AND scanned_at < $3 ORDER BY scanned_at",
 		hubID, startOfDay, endOfDay)
 	return scans, err
+}
+
+func (r *hubRepo) GetDashboardStats(ctx context.Context) (activeHubs int64, totalCities int64, err error) {
+	err = r.db.GetContext(ctx, &activeHubs, "SELECT COUNT(*) FROM hubs WHERE is_active = true")
+	if err != nil { return 0, 0, err }
+
+	err = r.db.GetContext(ctx, &totalCities, "SELECT COUNT(DISTINCT city) FROM hubs")
+	return activeHubs, totalCities, err
 }

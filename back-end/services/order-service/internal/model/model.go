@@ -92,3 +92,9 @@ type CreateOrderRequest struct {
 	InsuranceCost float64 `json:"insurance_cost"`
 	TotalCost     float64 `json:"total_cost"`
 }
+
+// DailyVolume represents daily order statistics
+type DailyVolume struct {
+	Date  string `json:"date" db:"date"`
+	Count int64  `json:"count" db:"count"`
+}
