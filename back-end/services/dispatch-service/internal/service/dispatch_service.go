@@ -1,20 +1,21 @@
 package service
 
 import (
-	"github.com/nusaroute/pkg/logger"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"math"
-	"net/http"
 	"time"
 
+	"github.com/nusaroute/pkg/logger"
+
 	"github.com/google/uuid"
+	"github.com/nusaroute/pkg/database"
 	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
+	"github.com/nusaroute/services/courier-service/pkg/grpc/pb"
 	"github.com/nusaroute/services/dispatch-service/internal/model"
 	"github.com/nusaroute/services/dispatch-service/internal/repository"
+	"github.com/redis/go-redis/v9"
 )
 
 type DispatchService interface {
@@ -25,13 +26,14 @@ type DispatchService interface {
 }
 
 type dispatchService struct {
-	repo            repository.DispatchRepository
-	producer        *kafka.Producer
-	courierSvcURL   string
+	repo          repository.DispatchRepository
+	producer      *kafka.Producer
+	courierClient pb.CourierServiceClient
+	redis         *redis.Client
 }
 
-func NewDispatchService(repo repository.DispatchRepository, producer *kafka.Producer, courierSvcURL string) DispatchService {
-	return &dispatchService{repo: repo, producer: producer, courierSvcURL: courierSvcURL}
+func NewDispatchService(repo repository.DispatchRepository, producer *kafka.Producer, courierClient pb.CourierServiceClient, r *redis.Client) DispatchService {
+	return &dispatchService{repo: repo, producer: producer, courierClient: courierClient, redis: r}
 }
 
 // CourierInfo represents the courier data returned from Courier Service API.
@@ -76,7 +78,7 @@ func (s *dispatchService) AutoAssign(ctx context.Context, orderID, awb string, p
 			Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
 		OrderID: orderID, AWB: awb,
 		CourierID: bestCourier.ID, CourierName: bestCourier.FullName,
-		CourierPhone: bestCourier.Phone,
+		CourierPhone:        bestCourier.Phone,
 		EstimatedPickupTime: time.Now().Add(30 * time.Minute),
 	}
 
@@ -84,7 +86,7 @@ func (s *dispatchService) AutoAssign(ctx context.Context, orderID, awb string, p
 		return fmt.Errorf("failed to create assignment: %w", err)
 	}
 
-	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ✅ Assigned courier %s (%.1fkm away) to order %s", bestCourier.FullName, bestDist, orderID))
+	logger.Info(context.Background(), fmt.Sprintf("[Dispatch]  Assigned courier %s (%.1fkm away) to order %s", bestCourier.FullName, bestDist, orderID))
 	return nil
 }
 
@@ -96,8 +98,12 @@ func (s *dispatchService) ManualAssign(ctx context.Context, req model.ManualAssi
 }
 
 func (s *dispatchService) ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error) {
-	if page < 1 { page = 1 }
-	if perPage < 1 { perPage = 20 }
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
 	return s.repo.ListAssignments(ctx, status, page, perPage)
 }
 
@@ -108,10 +114,20 @@ func (s *dispatchService) RunNoShowMonitor(ctx context.Context) {
 
 	for {
 		select {
-		case <-ctx.Done(): return
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
+			lock := database.NewRedisMutex(s.redis, "lock:cron:no_show_monitor")
+			if !lock.Acquire(ctx, 9*time.Minute) {
+				continue
+			}
+
 			noShows, err := s.repo.GetNoShowAssignments(ctx, 2*time.Hour)
-			if err != nil { logger.Info(context.Background(), fmt.Sprintf("[Dispatch] NoShow check error: %v", err)); continue }
+			if err != nil {
+				logger.Info(context.Background(), fmt.Sprintf("[Dispatch] NoShow check error: %v", err))
+				lock.Release(ctx)
+				continue
+			}
 
 			for _, a := range noShows {
 				logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ⚠️ Courier %s no-show for order %s, reassigning...", a.CourierID, a.OrderID))
@@ -131,24 +147,35 @@ func (s *dispatchService) RunNoShowMonitor(ctx context.Context) {
 					continue
 				}
 			}
+			lock.Release(ctx)
 		}
 	}
 }
 
 func (s *dispatchService) fetchAvailableCouriers(lat, lng, radiusKm float64) ([]CourierInfo, error) {
-	url := fmt.Sprintf("%s/api/v1/couriers/available?lat=%.6f&lng=%.6f&radius_km=%.1f",
-		s.courierSvcURL, lat, lng, radiusKm)
-
-	resp, err := http.Get(url)
-	if err != nil { return nil, err }
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var result struct {
-		Data []CourierInfo `json:"data"`
+	req := &pb.AvailableCouriersRequest{
+		Latitude:  lat,
+		Longitude: lng,
+		RadiusKm:  radiusKm,
 	}
-	if err := json.Unmarshal(body, &result); err != nil { return nil, err }
-	return result.Data, nil
+
+	resp, err := s.courierClient.GetAvailableCouriers(context.Background(), req)
+	if err != nil {
+		return nil, fmt.Errorf("gRPC error: %w", err)
+	}
+
+	var result []CourierInfo
+	for _, c := range resp.Data {
+		result = append(result, CourierInfo{
+			ID:       c.Id,
+			FullName: c.FullName,
+			Phone:    c.Phone,
+			Lat:      c.CurrentLat,
+			Lng:      c.CurrentLng,
+		})
+	}
+
+	return result, nil
 }
 
 func haversine(lat1, lng1, lat2, lng2 float64) float64 {

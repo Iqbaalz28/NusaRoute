@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -26,8 +27,13 @@ type PostgresConfig struct {
 
 // ConnectPostgres creates a new PostgreSQL connection using sqlx.
 func ConnectPostgres(cfg PostgresConfig) (*sqlx.DB, error) {
+	appEnv := os.Getenv("APP_ENV")
 	if cfg.SSLMode == "" {
-		cfg.SSLMode = "disable"
+		if appEnv == "production" {
+			cfg.SSLMode = "require"
+		} else {
+			cfg.SSLMode = "disable"
+		}
 	}
 
 	dsn := fmt.Sprintf(

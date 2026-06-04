@@ -1,11 +1,12 @@
 package service
 
 import (
-	"github.com/nusaroute/pkg/logger"
 	"context"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/nusaroute/pkg/logger"
 
 	"github.com/google/uuid"
 	"github.com/nusaroute/pkg/events"
@@ -93,7 +94,7 @@ func (s *paymentService) HandleWebhook(ctx context.Context, payload model.Webhoo
 			return fmt.Errorf("failed to mark as paid and save outbox: %w", err)
 		}
 
-		logger.Info(context.Background(), fmt.Sprintf("[Payment] ✅ Payment confirmed for order %s (amount: %.2f) - Event saved to outbox", tx.OrderID, tx.Amount))
+		logger.Info(context.Background(), fmt.Sprintf("[Payment]  Payment confirmed for order %s (amount: %.2f) - Event saved to outbox", tx.OrderID, tx.Amount))
 
 	case "FAILED":
 		event := events.PaymentFailedEvent{

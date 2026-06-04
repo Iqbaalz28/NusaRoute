@@ -5,11 +5,15 @@ package kafka
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
 	kafkago "github.com/segmentio/kafka-go"
 )
+
+// DLQTopicName is the Dead Letter Queue topic for failed events.
+const DLQTopicName = "nusaroute.dlq"
 
 // Producer wraps kafka-go Writer for publishing events.
 type Producer struct {
@@ -56,9 +60,19 @@ func (p *Producer) Close() error {
 	return p.writer.Close()
 }
 
+// DLQEvent wraps a failed message with error context for the Dead Letter Queue.
+type DLQEvent struct {
+	OriginalTopic string `json:"original_topic"`
+	OriginalKey   string `json:"original_key"`
+	Payload       string `json:"payload"`
+	ErrorReason   string `json:"error_reason"`
+	FailedAt      string `json:"failed_at"`
+}
+
 // Consumer wraps kafka-go Reader for consuming events.
 type Consumer struct {
-	reader *kafkago.Reader
+	reader    *kafkago.Reader
+	dlqWriter *kafkago.Writer // optional: nil disables DLQ publishing
 }
 
 // NewConsumer creates a new Kafka consumer for a specific topic and group.
@@ -72,7 +86,51 @@ func NewConsumer(brokers []string, topic string, groupID string) *Consumer {
 		CommitInterval: time.Second,
 		StartOffset:    kafkago.FirstOffset,
 	})
-	return &Consumer{reader: r}
+
+	// DLQ writer — always initialized so failed events are never silently dropped.
+	dlq := &kafkago.Writer{
+		Addr:         kafkago.TCP(brokers...),
+		Topic:        DLQTopicName,
+		Balancer:     &kafkago.LeastBytes{},
+		BatchTimeout: 10 * time.Millisecond,
+		RequiredAcks: kafkago.RequireOne,
+	}
+	return &Consumer{reader: r, dlqWriter: dlq}
+}
+
+// publishToDLQ sends a failed message to the Dead Letter Queue topic.
+func (c *Consumer) publishToDLQ(ctx context.Context, msg kafkago.Message, handlerErr error) {
+	if c.dlqWriter == nil {
+		log.Printf("[Kafka DLQ] No DLQ writer configured, dropping failed event from topic=%s", msg.Topic)
+		return
+	}
+
+	evt := DLQEvent{
+		OriginalTopic: msg.Topic,
+		OriginalKey:   string(msg.Key),
+		Payload:       string(msg.Value),
+		ErrorReason:   handlerErr.Error(),
+		FailedAt:      time.Now().UTC().Format(time.RFC3339),
+	}
+
+	data, err := json.Marshal(evt)
+	if err != nil {
+		log.Printf("[Kafka DLQ] Failed to marshal DLQ event: %v", err)
+		return
+	}
+
+	dlqMsg := kafkago.Message{
+		Key:   []byte(fmt.Sprintf("dlq-%s-%s", msg.Topic, string(msg.Key))),
+		Value: data,
+		Time:  time.Now(),
+	}
+
+	if err := c.dlqWriter.WriteMessages(ctx, dlqMsg); err != nil {
+		log.Printf("[Kafka DLQ] Failed to publish to DLQ from topic=%s: %v", msg.Topic, err)
+	} else {
+		log.Printf("[Kafka DLQ]  Sent failed event to DLQ | original_topic=%s key=%s reason=%s",
+			msg.Topic, string(msg.Key), handlerErr.Error())
+	}
 }
 
 // MessageHandler is a function that processes a consumed Kafka message.
@@ -87,28 +145,55 @@ func (c *Consumer) Consume(ctx context.Context, handler MessageHandler) {
 			log.Printf("[Kafka Consumer] Context cancelled, stopping consumer for topic=%s", c.reader.Config().Topic)
 			return
 		default:
-			msg, err := c.reader.ReadMessage(ctx)
+			msg, err := c.reader.FetchMessage(ctx)
 			if err != nil {
 				if ctx.Err() != nil {
 					return
 				}
-				log.Printf("[Kafka Consumer] Error reading message: %v", err)
+				log.Printf("[Kafka Consumer] Error fetching message: %v", err)
 				continue
 			}
 
 			log.Printf("[Kafka Consumer] Received message from topic=%s partition=%d offset=%d",
 				msg.Topic, msg.Partition, msg.Offset)
 
-			if err := handler(ctx, msg.Key, msg.Value); err != nil {
-				log.Printf("[Kafka Consumer] Error processing message from topic=%s: %v", msg.Topic, err)
-				// In production, we would send this to a DLQ
+			var handlerErr error
+			maxRetries := 3
+			backoff := 100 * time.Millisecond
+
+			for i := 0; i <= maxRetries; i++ {
+				handlerErr = handler(ctx, msg.Key, msg.Value)
+				if handlerErr == nil {
+					break // success
+				}
+				if i < maxRetries {
+					log.Printf("[Kafka Consumer] Error processing msg (attempt %d/%d), retrying in %v: %v", i+1, maxRetries, backoff, handlerErr)
+					time.Sleep(backoff)
+					backoff *= 2
+				}
+			}
+
+			if handlerErr != nil {
+				log.Printf("[Kafka Consumer] Max retries reached for topic=%s: %v", msg.Topic, handlerErr)
+				// Send failed event to Dead Letter Queue for later inspection/replay.
+				go c.publishToDLQ(ctx, msg, handlerErr)
+			}
+			
+			// Commit offset ONLY after processing succeeds (or max retries reached and sent to DLQ)
+			if err := c.reader.CommitMessages(ctx, msg); err != nil {
+				log.Printf("[Kafka Consumer] Failed to commit message topic=%s offset=%d: %v", msg.Topic, msg.Offset, err)
 			}
 		}
 	}
 }
 
-// Close closes the consumer.
+// Close closes the consumer and the DLQ writer.
 func (c *Consumer) Close() error {
+	if c.dlqWriter != nil {
+		if err := c.dlqWriter.Close(); err != nil {
+			log.Printf("[Kafka DLQ] Error closing DLQ writer: %v", err)
+		}
+	}
 	return c.reader.Close()
 }
 

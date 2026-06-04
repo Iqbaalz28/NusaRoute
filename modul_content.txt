@@ -1,0 +1,1942 @@
+
+
+================================================================================
+=== MODULE: 01 - Parallel Programming.pdf ===
+================================================================================
+
+Total pages: 33
+
+--- Page 1 ---
+Parallel Programming
+yudi@upi.edu
+Feb 2026
+--- Page 3 ---
+Arsitektur
+Von Neumann (1945)
+https://classes.cs.uchicago.edu/archive/2022/sprin
+g/52060-1/modules/m1/m1.pdf
+--- Page 4 ---
+Serial
+https://docs.rc.fas.harvard.edu/wp-
+content/uploads/2016/03/Intro_Parallel_Computin
+g.pdf
+--- Page 5 ---
+https://medium.com/reverse-
+engineering-for-dummies/a-
+crash-course-in-assembly-
+language-695b07995b4d
+--- Page 6 ---
+Makin tinggi kecepatan processor, makin tinggi
+outputnya
+--- Page 7 ---
+Masalah? Power → Suhu
+lebar transistor: 12nm.
+diameter rambut: 50000-70000 nm
+--- Page 8 ---
+Solusi: multicore
+https://docs.rc.fas.harvard.edu/wp-
+content/uploads/2016/03/Intro_Parallel_Computin
+g.pdf
+--- Page 9 ---
+https://classes.cs.uchicago.edu/archive/2022/sprin
+g/52060-1/modules/m1/m1.pdf
+--- Page 10 ---
+Intel i9-12900K
+--- Page 11 ---
+AMD Epyc
+192 cores
+3.7 GHz, 384MB of L3 cache,
+500W
+Harga: sekitar Rp168jt
+--- Page 12 ---
+Aplikasi Parallel Programming
+Data Analysis yang memerlukan respon real time
+Crash Simulations
+Ramalan Cuaca
+CGI
+--- Page 13 ---
+Simulator Kecelakaan Mobil
+20 juta elemen objek simulator
+500-1000 cores
+Kenapa tidak bisa dengan
+https://www.automotivetestingtechnologyinternatio
+nal.com/features/supercomputers-in-crash-
+distributed system?
+simulation.html
+--- Page 14 ---
+Ramalan Cuaca https://www.noaa.gov/news-release/noaa-
+completes-upgrade-to-weather-and-climate-
+supercomputer-system
+14.5 Petaflops
+327,680 cores ( )
+AMD EPYC "Rome" 7742 (64-core processors
+--- Page 15 ---
+Parallel Programming, thread vs process
+https://www.linkedin.com/pulse/multiprocessing-
+vs-multithreading-jasser-ksouri-rsybe/
+--- Page 16 ---
+Single vs
+Multi
+Thread
+--- Page 17 ---
+Permasalahan Multithread
+Programmer tidak tahu urutan eksekusi dan kapan thread akan berpindah
+Race condition
+Deadlock
+--- Page 18 ---
+Race Condition
+→ urutan eksekusi.
+Resource yang diakses bersamaan Hasil ditentukan oleh
+http://www.sjsu.edu/people/robert.chun/courses/cs159/s0/Day-8---Race-Semaphores.pdf
+--- Page 19 ---
+Race Condition: Producer-Consumer Problem
+https://www.codingalpha.com/producer-consumer-problem-c-program/
+--- Page 20 ---
+Producer:
+buffer[pos] = data;
+pos++;
+Consumer:
+pos-- ;
+data = buffer[pos];
+Catatan: belum termasuk penanganan buffer
+penuh dan kosong.
+--- Page 21 ---
+Race condition
+Thread Producer Thread Consumer Isi Variabel
+buffer[pos] = "A" pos = 1
+pos++
+data = buffer[pos] pos = 0
+pos -- data = "A"
+buffer[pos] = "B" pos = 0
+(OS memutuskan pindah thread data = "A"
+sebelum pos diupdate) (pos belum sempat di inc)
+data = buffer[pos] pos = -1
+pos -- data = "A"
+(pos tidak valid)
+--- Page 22 ---
+Kenapa penanganan race condition penting?
+--- Page 23 ---
+Deadlock
+--- Page 24 ---
+Deadlock
+--- Page 25 ---
+Deadlock: Dining Philosopher
+https://austingwalters.com/multithreading-
+dining-philosophers-problem/
+--- Page 27 ---
+Solusi?
+Critical section (Dijkstra, 1965): bagian dari program yang tidak boleh dijalankan
+paralel.
+https://www.studytonight.c
+om/operating-
+system/process-
+synchronization
+--- Page 28 ---
+Karakteristik Critical Section
+Harus dieksekusi secepat mungkin (kenapa?)
+Jangan sampai ada error, misal infinite loop
+--- Page 29 ---
+Mekanisme penanganan critical section
+Mutex (Mutual Exclusion)
+Semaphore
+--- Page 30 ---
+Mutex
+Mutex: Kunci yang diset sebelum menggunakan resource-bersama dan
+dilepaskan saat sudah selesai. Saat kunci di-set tidak boleh ada thread lain yang
+mengakses bagian code yang dikunci.
+https://preshing.com/20150316/semaphores-are-
+surprisingly-versatile/
+--- Page 31 ---
+import threading
+counter = 0 Contoh
+lock = threading.Lock()
+Mutex
+def increment_counter(n_times):
+global counter
+for _ in range(n_times):
+with lock: # mutex acquired
+counter += 1 # critical section
+# mutex automatically released
+def run_example():
+global counter
+counter = 0
+threads = []
+for _ in range(5):
+t = threading.Thread(target=increment_counter, args=(100000,))
+threads.append(t)
+t.start()
+for t in threads:
+t.join()
+print("Final counter:", counter)
+run_example()
+--- Page 32 ---
+(CSP) Communicating Sequential Processes
+Tony Hoare, 1978
+Share memory melalui komunikasi
+Structured communication
+Proses + channel
+--- Page 33 ---
+Sinkronisasi Process / Thread
+Race Condition dan Deadlock disebabkan karena ada resources
+yang diakses bersama.
+Solusi: sinkronisasi saat akses resources
+Next: GoLang
+
+
+================================================================================
+=== MODULE: 02 - Golang Go Language.pdf ===
+================================================================================
+
+Total pages: 66
+
+--- Page 1 ---
+GoLang
+yudi@upi.edu; Feb 26
+1
+--- Page 2 ---
+Tiobe Index, Jan 2026
+2
+--- Page 3 ---
+3
+--- Page 4 ---
+4
+--- Page 5 ---
+5
+--- Page 6 ---
+6
+--- Page 7 ---
+Typescript
+compiler versi baru
+ditulis ulang
+dengan GO
+https://devblogs.microsoft.com/typescript/typescript-native-port/
+"... lowest-level language we can get to
+and still have automatic garbage
+collection"
+7
+--- Page 8 ---
+Sejarah GoLang
+Dikembangkan untuk mengatasi masalah di Google, 2007 oleh Robert Griesemer,
+Rob Pike, & Ken Thompson
+Masalah Google:
+Waktu build lama
+Simplicity, performance
+Concurrency, Networked System
+Garbage Collection
+8
+--- Page 9 ---
+Fitur Golang
+Concurrency
+Lightweight Threads (Goroutines), Scheduler, Race Detector, Channel
+Compile ke native binary (Windows, MacOS, Linux, Android dst)
+kinerja tinggi, memory kecil, tidak perlu interpreter seperti Java, Python, JScript
+proses compile cepat, hasil compile kecil, cocok untuk container
+Asynchronous
+Net/Http, json, SQL jadi standard library
+9
+--- Page 10 ---
+Fitur Golang (lanj)
+Low-Latency Garbage Collection
+Memory Safety
+tidak ada pointer arithmetic, bounds checking, variable
+initialization
+Static typing
+Readability
+Tooling: go build, go mod, go get, go test
+10
+--- Page 11 ---
+Framework Golang
+11
+--- Page 12 ---
+package main
+import "fmt"
+func main() {
+fmt.Println("Hello, World!")
+}
+// auto insert titik koma
+12
+--- Page 13 ---
+Overview Dasar Go
+Variables, Types, and Constants in Go
+Control Structures: If, Loops, Switch
+Data Structures in Go: Arrays, Slices, and Maps
+Functions
+Structs & Interfaces
+Error Handling
+Concurrency in Go: Goroutines & Channels
+Package Management
+13
+Go Tooling
+--- Page 14 ---
+Variable, Type & Konstanta
+func main() {
+var umur int //otomatis diinisialisasi nol
+var nama string = "Ahmad Aulia"
+nama2 := "Ahmad Aulia2" //lebih pendek
+var tinggi float64 = 1.75
+var isMhs bool = true
+isMhs = false
+const Pi = 3.1415 //konstanta
+//harus digunakan, jika tdk error compile
+fmt.Println(Pi,nama,nama2,umur,tinggi,isMhs)
+}
+14
+--- Page 15 ---
+Konversi harus eksplisit
+var a int = 5
+var b float64 = 2.1
+var c float64 = a + b //ERROR, harus eksplisit
+//solusi
+var c float64 = float64(a) + b
+15
+--- Page 16 ---
+Array, Slices dan Map
+//array
+arrNum := [3]int{10, 20, 30} //init
+arrNum[2] = 999
+//array dua dimensi
+var matrix [3][3]int
+matrix[0][0] = 999
+//[[999 0 0] [0 0 0] [0 0 0]]
+//array dinamik
+arrDinamik := []int{}
+arrDinamik = append(arrDinamik, 40, 50, 60, 70)
+arrDinamik[2] = 999
+panjangArray := len(arrDinamik)
+subSlice := arrDinamik[0:2] // copy, tapi shared memory
+subSlice[1] = 888 // arrDinamik ikut berubah
+16
+--- Page 17 ---
+Slice
+//supaya copy yang bukan shared
+subSlice2 := make([]int, len(subSlice)) //init array kosong
+copy(subSlice2, subSlice)
+subSlice2[0] = 777 //sliceNum tdk berubah
+// slice seperti python
+ss1 := arrDinamik[:2] // dua elemen pertama
+ss2 := arrDinamik[2:] // elemen ke-2 sampai akhir
+17
+--- Page 18 ---
+Map
+//init map. key string, value int
+nilai := make(map[string]int)
+nilai["Budi"] = 95
+nilai["Wati"] = 87
+nilaiBudi := nilai["Budi"]
+fmt.Println("Nilai Budi:", nilaiBudi)
+nilaiX := nilai["X"]
+//0 memang nilainya atau indeks "X" tidak ada?
+18
+--- Page 19 ---
+Map: "Comma OK"
+if nilai, ok := nilai["X"]; ok {
+fmt.Println("Nilai X:", nilai)
+} else {
+fmt.Println("Nilai tdk ditemukan")
+}
+// map mengembalikan dua nilai,
+// jika indeks tidak ada, ok bernilai false.
+19
+--- Page 20 ---
+Control Structure (if-else)
+if val := getStatus(); val == "OK" {
+fmt.Println("Sukses")
+} else {
+fmt.Println("Gagal, status:", val)
+}
+//tidak perlu kurung ()
+//lainnya mirip dengan bahasa C/Java
+//tidak punya ternary operator (? :).
+20
+--- Page 21 ---
+Loop
+//standard
+for i := 1; i <= 3; i++ {
+fmt.Println(i)
+}
+//while
+n := 0
+for n < 3 {
+fmt.Println(n)
+n++
+}
+catatan: continue dan break dapat digunakan di dalam loop
+21
+--- Page 22 ---
+Loop
+//for each untuk aray
+items := []string{"satu", "dua", "tiga"}
+for index,value := range items {
+fmt.Println(index,value)
+}
+//jika tidak perlu index, gunakan underscore
+for _,value := range items {
+fmt.Println(value)
+}
+//for each untuk map, tidak ada jaminan urutan
+for k, v := range nilai {
+fmt.Println(k, v)
+}
+22
+--- Page 23 ---
+Loop
+//key saja
+for k := range nilai {
+fmt.Println(k)
+}
+//forever loop
+for {
+//break jika ingin keluar
+}
+23
+--- Page 24 ---
+Switch
+hari := "Senin"
+switch hari {
+case "Senin", "Selasa", "Rabu", "Kamis", "Jumat":
+fmt.Println("Hari kerja") // bisa > 1
+case "Sabtu", "Minggu":
+fmt.Println("Libur!") // tdk perlu break
+default:
+fmt.Println("Tidak valid")
+}
+24
+--- Page 25 ---
+Function
+//standard
+func tambah(a int, b int) int {
+return a + b
+}
+func tambah2(a,b,c,d,e int) int { //bisa disingkat jika
+tipe param sama
+return a + b + c + d + e
+}
+25
+--- Page 26 ---
+Function
+//return lebih dari dua nilai
+func multiReturn(a,b int) (int, int) {
+return a + b, a * b
+}
+//cara panggil x,y:= multiReturn(2,3)
+func applyOperation(a, b int, operation func(int, int) int) int
+{
+return operation(a, b)
+}
+//contoh pemanggilan applyOperation(2,1,tambah)
+26
+--- Page 27 ---
+Struct & Interface
+Golang tidak memiliki class + inheritance.
+//deklarasi interface
+type MhsInterf interface {
+hitungYudisium() string
+}
+//deklarasi struct mhsS1 dan S2
+type MhsS1 struct
+{
+nim int
+ipk float64
+}
+type MhsS2 struct
+{
+nim int
+ipk float64
+}
+27
+--- Page 28 ---
+Implementasi Interface dan "polymorphism"
+//implementasi hitung yudisium untuk S1 dan S2
+func (mhs MhsS1) hitungYudisium() string {
+if mhs.ipk >= 3.5 { return "Cumlaude"}
+return "Tidak Cumlaude"
+}
+func (mhs MhsS2) hitungYudisium() string {
+return "Cumlaude"
+}
+func prosesMhs(mhs MhsInterf) {
+fmt.Println("Yudisium:", mhs.hitungYudisium())
+}
+28
+--- Page 29 ---
+"polymorphism"
+var mhs1 MhsS1 = MhsS1{nim: 12345, ipk: 2.6}
+var mhs2 MhsS2 = MhsS2{nim: 12346, ipk: 3.7}
+prosesMhs(mhs1)
+prosesMhs(mhs2)
+//tidak ada class, tidak ada inheritance
+//mengapa?
+29
+--- Page 30 ---
+Passing "object"
+*
+func setIPK(mhs MhsS1, ipkBaru float64) {
+mhs.ipk = ipkBaru
+}
+var mhs1 MhsS1 = MhsS1{nim: 12345}
+&
+setIPK( mhs1, 3.8) // passing pointer
+fmt.Println("IPK mhs1:", mhs1.ipk)
+//apa yang terjadi jika menggunakan
+//argumen fungsi biasa? setIPK(mhs MhsS1…)
+30
+--- Page 31 ---
+Error Handling (Tidak ada try-catch-finally)
+f, err := os.Open("hello.txt")
+if err != nil {
+// terjadi error
+fmt.Println("Error:", err)
+return // Exit
+}
+defer f.Close() // file pasti di-close "finally"
+fmt.Println("File berhasil dibuka")
+// gunakan f untuk memproses file
+31
+--- Page 32 ---
+func sayHello() {
+Goroutine
+for i := 0; i < 10; i++ {
+fmt.Println("Hello", i)
+//sleep untuk mensimulasikan job
+time.Sleep(100 * time.Millisecond)
+Output: }
+}
+func main() {
+Main 0
+go
+sayHello() // jalankan goroutine tanpa blocking
+Hello 0
+// bagian ini langsung dijalankan
+for i := 0; i < 3; i++ {
+Hello 1
+fmt.Println("Main", i)
+Main 1 time.Sleep(100 * time.Millisecond)
+}
+Main 2
+// masalah: kalau main() selesai,
+// walaupun sayHello belum, program berhenti
+Hello 2
+}
+Hello 3
+[end] 32
+--- Page 33 ---
+Istilah:
+Concurrent
+Parallel
+Asynchronous
+33
+--- Page 34 ---
+GoRoutine
+Memory Thread: 2MB, GoRoutine hanya 2KB → ringan
+Thread: kernel level ( lama); GoRoutine: user space (cepat)
+Thread: ribuan; Goroutine: juta
+Pemetaan goroutine sesuai jumlah core CPU.
+Koordinasi antar goroutines?
+Don't communicate by sharing memory; share memory by communicating.
+Tidak menggunakan shared variable, tapi komunikasi via channel.
+34
+--- Page 35 ---
+Channel
+"pipa" untuk mengirim dan menerima data ke goroutines dan sinkronisasi.
+Init: ch := make(chan int) //bisa string
+Kirim: ch <- value (block)
+Terima: value := <-ch (unblock yang mengirim, block jika masih kosong)
+Terima dan cek channel ditutup? value, ok := <-ch
+Close: close(ch) prinsip Go, pengirim yang menutup channel.
+35
+--- Page 36 ---
+Contoh Channel
+func main() {
+ch := make(chan string)
+go func() {
+//send; blocks sampai main menerima
+ch <- "ping"
+}()
+msg := <-ch // receive; blocks sampai sender sends
+fmt.Println(msg)
+}
+36
+--- Page 37 ---
+Channel //channel bisa di-passing sebagai parameter
+func sayHello(ch <-chan int) {
+for i := 0; i < 10; i++ {
+Output:
+fmt.Println("Hello", i)
+time.Sleep(100 * time.Millisecond)
+Main 0 }
+Hello 0 <-ch // receive
+Hello 1
+}
+Main 1
+Hello 2 func main() {
+Main 2 ch := make(chan int) // init channel
+Main selesai, tunggu go sayHello(ch)
+Hello 3
+for i := 0; i < 3; i++ {
+Hello 4 fmt.Println("Main", i)
+Hello 5 time.Sleep(100 * time.Millisecond)
+Hello 6 }
+fmt.Println("Main selesai, tunggu")
+Hello 7
+//send & blocking, tunggu sayHello terima
+Hello 8
+ch <- 1
+Hello 9
+}
+[end]
+37
+--- Page 38 ---
+//channel bisa di-passing sebagai parameter
+func sayHello(ch <-chan int) {
+Latihan for i := 0; i < 10; i++ {
+fmt.Println("Hello", i)
+time.Sleep(100 * time.Millisecond)
+berapa kali }
+<-ch // terima
+"Sayhello selesai"
+fmt.Println("Say hello selesai")
+diprint? fmt.Println("Say hello selesai")
+fmt.Println("Say hello selesai")
+}
+func main() {
+ch := make(chan int) // init channel
+go sayHello(ch)
+for i := 0; i < 3; i++ {
+fmt.Println("Main", i)
+time.Sleep(100 * time.Millisecond)
+}
+fmt.Println("Main selesai, tunggu")
+ch <- 1 //blocking, tunggu sayHello terima
+}
+38
+--- Page 39 ---
+//channel bisa di-passing sebagai parameter
+Latihan
+func sayHello(ch chan int) {
+for i := 0; i < 10; i++ {
+fmt.Println("Hello", i)
+time.Sleep(100 * time.Millisecond)
+}
+kalau dibalik?
+ch <- 1
+}
+func main() {
+ch := make(chan int) // init channel
+go sayHello(ch)
+for i := 0; i < 3; i++ {
+fmt.Println("Main", i)
+time.Sleep(100 * time.Millisecond)
+}
+<- ch
+}
+39
+--- Page 40 ---
+Directional channels
+func sayHello(ch <-chan int) //hanya bisa receive
+func sayHello(ch chan<- int) //hanya bisa send
+func sayHello(ch chan int) //bisa send & receive
+40
+--- Page 41 ---
+Goroutines Leak
+func main() {
+ch := make(chan int)
+go func() {
+result := komputasi()
+ch <- result //blocking forever
+}()
+//aktivitas di main
+//lupa ambil result dari channel, <-ch
+fmt.Println("Done")
+}
+Tetap selesai. Tapi goroutines akan tertinggal dan tidak akan
+diproses garbage collection (leak)
+41
+--- Page 42 ---
+Latihan
+Apa yang terjadi dengan code berikut? Cara memperbaikinya?
+func main() {
+ch := make(chan int)
+ch <- 1
+fmt.Println(<-ch)
+}
+42
+--- Page 43 ---
+Latihan
+func main() { Apa yang terjadi? bagaimana
+ch1 := make(chan int)
+memperbaikinya?
+ch2 := make(chan int)
+go func() {
+ch1 <- 1
+fmt.Println(<-ch2)
+}()
+ch2 <- 2
+fmt.Println(<-ch1)
+}
+43
+--- Page 44 ---
+Buffered Channel func main() {
+ch := make(chan int, 2) // Buffer 2
+Senders block ketika buffer
+ch <- 1 // tidak block
+ch <- 2 // tidak block
+penuh, receivers block
+// ch <- 3 // block! penuh
+ketika buffer kosong.
+fmt.Println(<-ch) // 1
+fmt.Println(<-ch) // 2
+// <-ch // block! (kosong)
+}
+44
+--- Page 45 ---
+func main() {
+Producer
+// buffered channel dengan kapasitas 3.
+Consumer ch := make(chan int, 3)
+// Producer goroutine
+(buffered channel) go func() {
+i := 1
+for { // forever loop
+fmt.Printf("Producer: kirim %d\n", i)
+ch <- i // sleep jika buffer penuh
+//simulasi proses
+Producer: kirim 1 time.Sleep(time.Duration(rand.Intn(3))*time.Second)
+Producer: kirim 2 i++
+Consumer: konsumsi 1 }
+Producer: kirim 3 }()
+Consumer: konsumsi 2
+Producer: kirim 4 // Consumer, loop isi channel
+Producer: kirim 5 // sleep jika buffer kosong, tunggu data dari producer
+. . . for val := range ch {
+fmt.Printf("Consumer: konsumsi %d\n", val)
+// simulasi proses
+time.Sleep(time.Duration(rand.Intn(3)) * time.Second)
+}
+}
+45
+--- Page 46 ---
+Latihan
+//apa yang terjadi dengan code berikut?
+func main() {
+ch := make(chan int, 1)
+ch <- 1
+fmt.Println(<-ch)
+}
+46
+--- Page 47 ---
+Select func main() {
+ch1 := make(chan string)
+Statement
+ch2 := make(chan string)
+go func() { ch1 <- "Data from Source A" }()
+pilih jalur
+go func() { ch2 <- "Data from Source B" }()
+berdasarkan
+channel yang
+// block, wait data dari channel
+yang siap
+// first come first serve,
+(sudah ada
+// jika datang bersamaan, pilih random
+data)
+select {
+case msg1 := <-ch1:
+fmt.Println("Received:", msg1)
+case msg2 := <-ch2:
+fmt.Println("Received:", msg2)
+}
+}
+47
+--- Page 48 ---
+Select: time out pattern
+externalAPI := make(chan string)
+go func() {
+time.Sleep(3 * time.Second) //bakal timeout
+externalAPI <- "Data dari external API"
+}()
+select {
+case res := <-externalAPI:
+fmt.Println("Sukses:", res)
+case <-time.After(2 * time.Second):
+fmt.Println("Error: Time out, API tdk respon")
+}
+48
+--- Page 49 ---
+Select, Default (non blocking)
+externalAPI := make(chan string)
+go func() {
+time.Sleep(3 * time.Second)
+externalAPI <- "Data dari external API"
+}()
+// tidak blocking, jika tidak ada channel yang diproses,
+// default langsung dikerjakan
+select {
+case res := <-externalAPI:
+fmt.Println("Success:", res)
+case <-time.After(2 * time.Second):
+fmt.Println("Error: Time out, API tdk respon")
+default:
+fmt.Println("Tidak ada data")
+}
+}
+49
+--- Page 50 ---
+Contoh Penggunaan Default, untuk men-stop worker
+func worker(stop chan bool) {
+for {
+//tidak blocking karena ada default
+select {
+case <-stop:
+fmt.Println("Cleaning & exiting...")
+return
+default:
+fmt.Println("Working...")
+time.Sleep(500 * time.Millisecond)
+}
+}
+50
+--- Page 51 ---
+func worker( jobs <-chan int, results chan<- int,
+cancel <-chan int){
+for {
+select {
+case job := <-jobs:
+results <- job*2 // proses pekerjaan
+case <-cancel:
+fmt.Println("worker dibatalkan")
+return
+}
+}
+}
+func main() {
+jobs := make(chan int)
+results := make(chan int)
+cancel := make(chan int)
+go worker(jobs, results, cancel)
+jobs <- 1
+Bagaimana jika jobs <- 2
+// ambil hasil
+ada worker ada
+fmt.Println(<-results)
+yang macet?
+fmt.Println(<-results)
+}
+51
+--- Page 52 ---
+func worker(id int, wg *sync.WaitGroup) {
+// wg di-passing by reference
+Sync
+// karena decrement counter jika fungsi sudah selesai
+defer wg.Done()
+Library:
+fmt.Printf("Worker %d mulai\n", id)
+wait group time.Sleep(time.Second) //1 det simulasi kerja
+fmt.Printf("Worker %d selesai\n", id)
+}
+tunggu func main() {
+//import sync untuk WaitGroup
+semua
+var wg sync.WaitGroup
+worker
+selesai
+for i := 1; i <= 3; i++ {
+wg.Add(1) // inc counter
+go worker(i, &wg)
+Lebih aman
+}
+karena bisa
+// block sampai counter = 0 (semua worker selesai)
+saja ada
+wg.Wait()
+worker fmt.Println("Semua worker selesai")
+}
+yang macet
+52
+--- Page 53 ---
+func worker(id int, jobs <-chan int, results chan<- int, wg
+*sync.WaitGroup) {
+Worker defer wg.Done()
+for j := range jobs {
+fmt.Printf("Worker %d mulai job %d\n", id, j)
+Pool
+time.Sleep(time.Second) // simulasi waktu proses
+result := j * j //ceritanya ini hasil proses
+Pattern
+fmt.Printf("Worker %d selesai job %d, result=%d\n", id, j, result)
+results <- result
+}
+}
+func main() {
+const numJobs = 10
+const numWorkers = 3
+jobs := make(chan int, numJobs)
+results := make(chan int, numJobs)
+var wg sync.WaitGroup
+// 1. Start Workers
+for w := 1; w <= numWorkers; w++ {
+wg.Add(1) // inc worker
+go worker(w, jobs, results, &wg)
+}
+. . . //lanjut slide berikut
+}
+53
+--- Page 54 ---
+func main() {
+lanj. // lanjutan dari slide sebelum . . .
+// 1. Start Workers
+. . .
+// siapkan job untuk diproses worker
+for j := 1; j <= numJobs; j++ {
+jobs <- j
+}
+//tidak ada job lagi, worker bisa stop kalau sdh selesai
+close(jobs)
+go func() {
+kenapa
+wg.Wait() // tunggu semua worker beres
+wg.wait() ada
+close(results) // tidak ada result baru
+di goroutine?
+}()
+Supaya result // kumpulkan hasil selama result belum di-close
+for result := range results {
+bisa langsung
+fmt.Printf("Main() mengumpulkan result:%d\n",result)
+diproses
+}
+}
+54
+--- Page 55 ---
+var counter int
+var mu sync.Mutex
+Sync: Mutex
+func increment(wg *sync.WaitGroup) {
+defer wg.Done()
+mu.Lock()
+//untuk memastikan unlock selalu terjadi
+defer mu.Unlock()
+counter++ //critical section
+}
+func main() {
+var wg sync.WaitGroup
+for i := 0; i < 5; i++ {
+wg.Add(1)
+go increment(&wg)
+}
+wg.Wait()
+fmt.Println("Counter:", counter)
+}
+55
+--- Page 56 ---
+Latihan
+Dining philosopher dengan Go.
+Producer consumer dengan sync.mutex
+56
+--- Page 57 ---
+57
+--- Page 58 ---
+58
+--- Page 59 ---
+59
+--- Page 60 ---
+60
+--- Page 61 ---
+61
+--- Page 62 ---
+62
+--- Page 63 ---
+63
+--- Page 64 ---
+64
+--- Page 65 ---
+65
+--- Page 66 ---
+66
+
+
+================================================================================
+=== MODULE: 03 - Cloud Native Microservice & Event Driven.pdf ===
+================================================================================
+
+Total pages: 66
+
+--- Page 1 ---
+Cloud Native Architecture:
+Microservice
+Feb 2026
+1
+--- Page 2 ---
+Cloud Native
+Memanfaatkan secara maksimal fitur cloud
+Cloud-native app: auto-scaling, self-healing, automated
+updates, rollbacks.
+Aplikasi biasa pada cloud: bukan cloud-native.
+2
+--- Page 3 ---
+Pendekatan Cloud Native
+Arsitektur: Microservice, Event driven
+Tools:
+Containerization
+Serverless Function
+PubSub
+Automation (IaC, CI/CD)
+3
+--- Page 4 ---
+"Cloud Native architecture is all about building software
+applications as a collection of independent, loosely coupled,
+business capability–oriented services (microservices) that can run
+on dynamic environments (public, private, hybrid, multicloud) in an
+automated, scalable, resilient, manageable, and observable way."
+Design Patterns for Cloud Native
+Applications
+4
+--- Page 5 ---
+5
+--- Page 6 ---
+6
+--- Page 7 ---
+7
+--- Page 8 ---
+Microservice
+Microservices applications: disusun dari service yang kecil,
+terspesialisasi, otonom/independen, punya tim sendiri, release cycle
+sendiri (build, deploy), data sendiri, bisa scaling independen,
+desentralisasi saling terhubung via API
+Contoh service pada ecommerce app:
+Front-end; Catalog; Shopping cart; Authentication; Logging; Store
+Konsep yang mulai muncul thn 2012
+8
+--- Page 9 ---
+Pola Pengembangan
+Communication
+Komunikasi antar service atau dengan sistem eksternal, sync dan async (pub-sub)
+Composition
+Gabungan beberapa service
+Data
+Data ada di setiap service
+9
+--- Page 10 ---
+Pola Pengembangan
+Event driven
+manajemen event
+Stream processing
+stateful & stateless
+API management & consumption
+expose microservice via API
+10
+--- Page 11 ---
+Prinsip Microservice
+High cohesion, loose coupling
+Domain Driven Design
+Decentralized Data Management
+Infra automation: deploy, scaling container
+CI/CD Continuous Integration Continuous Delivery
+Failure Isolation
+11
+--- Page 12 ---
+AWS for Solutions Architects, The definitive guide to AWS
+Solutions Architecture for migrating to, building, scaling, and 12
+succeeding in the cloud
+--- Page 13 ---
+Implementasi Microservice
+Services dibuatkan berdasarkan business domains & capabilities.
+Services bisa dibuat dengan operating systems, programming languages,
+data stores, and hardware infrastructure yang berbeda tapi dapat
+berkomunikasi via APIs (polyglot architecture)
+Services dibuat dan di-released menggunakan an automated process:
+continuous integration (CI) & continuous delivery (CD) methodology.
+13
+--- Page 14 ---
+Implementasi Microservice
+Services punya spesifikasi interface yang jelas dan tidak
+berubah walaupun implementasinya berubah (mirip OOP)
+Services maintainable & testable. Idealnya tests bisa
+di-otomatisasi via CI/CD.
+14
+--- Page 15 ---
+Keuntungan dan tantangan microservice?
+Kapan microservice tepat digunakan?
+Bagaimana dengan AI generated code?
+15
+--- Page 16 ---
+Manfaat Microservice
+Agility → kecepatan adaptasi. Fitur bisa
+ditambah/dimodifikasi dengan dampak minimal.
+Scaling → independen scaling.
+Resilient → autonom, crash dapat diisolasi.
+16
+--- Page 17 ---
+"We can scale our operation independently,
+maintain unparalleled system availability, and
+introduce new services quickly without the
+need for massive reconfiguration"
+Werner Vogels, Chief Technology Officer,
+Amazon Web Services
+17
+--- Page 18 ---
+"Some services require high availability, but are
+low volume, and it’s the opposite for other
+services. A microservice approach allows us to
+tune for both of these situations, whereas in a
+monolith it’s all or nothing."
+Beier Cai, Director of Software Development,
+Hootsuite
+18
+--- Page 19 ---
+UK Retailer Gilt:
+1. Lessens dependencies between teams, resulting in faster
+code to production
+2. Allows lots of initiatives to run in parallel
+3. Supports multiple technologies/languages/frameworks
+4. Enables graceful degradation of service
+5. Promotes ease of innovation through disposable code—it
+is easy to fail and move on
+19
+--- Page 20 ---
+"The monolithic code base we had was so massive and so
+broad no one knew all of it. People had developed their own
+areas of expertise and custodianship around submodules of
+the application."
+Phil Calçado, former Director of Engineering, SoundCloud
+20
+--- Page 21 ---
+Kelemahan
+Konsistensi data → tiap service punya data sendiri.
+Network latency → multiservice perlu komunikasi
+untuk satu task
+Kompleksitas
+21
+--- Page 22 ---
+Kelemahan
+Kompleksitas
+Mengelola service dengan stack berbeda
+Debug task yang melibatkan multiservice
+Integrasi service
+Infra kompleks
+22
+--- Page 23 ---
+23
+--- Page 24 ---
+Di kondisi seperti apa microservice tepat digunakan?
+24
+--- Page 25 ---
+Service Oriented Architecture vs Microservice
+SOA-based design: a set of coarse-grained services, such as web services, that
+often leverage open standards and a central monolithic integration layer known
+as the enterprise service bus (ESB). An API management layer can be used on
+top of this architecture so you can expose the capabilities as managed APIs.
+25
+--- Page 26 ---
+Microservice
+menghilangkan
+ESB (Enterprise
+Service Bus)
+26
+--- Page 27 ---
+Microservice
+27
+--- Page 28 ---
+Contoh
+Microservice
+di Azzure
+28
+--- Page 29 ---
+Contoh
+di Google
+Cloud
+29
+--- Page 30 ---
+Contoh
+di AWS
+30
+--- Page 31 ---
+Maturity dalam
+Microservice
+Microservice Architecture: Aligning Principles,
+Practices, and Culture
+31
+--- Page 32 ---
+Solution: fitur untuk memenuhi tujuan
+32
+--- Page 33 ---
+Standarisasi
+Walaupun bisa berbeda stack, tetap perlu ada
+standarisasi antar service
+Standar input dan output service (API)
+Standarisasi proses software engineering.
+33
+--- Page 34 ---
+Service Design
+Ukuran service, seberapa ukuran "micro?"
+Data yang dikelola service:
+terlalu luas → perlu sinkronisasi data
+terlalu terbatas → terlalu sering akses service lain
+34
+--- Page 35 ---
+35
+--- Page 36 ---
+Arsitektur Event Driven dalam Microservice
+Creating, messaging, processing, antrian, menyimpan
+event.
+Event: pesan atau notifikasi dari suatu service yang
+digunakan service lain (consume).
+36
+--- Page 37 ---
+37
+--- Page 38 ---
+Contoh Event
+A modification of a database A code change that has been
+checked into a CI/CD pipeline
+A runtime error in an
+A new customer is registered in
+application
+the system
+A request submitted by a user
+A payment is processed
+An EC2 instance fails
+A stock price changes
+A threshold is exceeded A sensor reports a temperature
+reading
+A user interacts with a mobile app
+38
+--- Page 39 ---
+Implementasi event-driven: cara biasa atau serverless seperti
+Amazon Lambda & Azure Functions.
+Serverless: natively event triggered.
+Cocok untuk kemunculan event yang jarang (menghemat biaya)
+39
+--- Page 40 ---
+Dua Aktor: Producer & Consumer
+Producer mendeteksi perubahan, men-create dan mengirimkan
+:
+event ke dalam antrian.
+Consumer : mengambil event dalam antrian (secara async) dan
+memprosesnya (action).
+Loosely coupled architecture: Producers of events are not aware of
+who is going to consume their output and consumers of events are not
+aware of who generated the events.
+Dua model: event streaming dan pub-sub
+40
+--- Page 41 ---
+Event streaming (a message queuing model)
+Hanya diproses oleh satu consumer dan setelah di-fetch oleh consumer
+dikeluarkan dari antrian (kecuali ada kegagalan proses event)
+Scaling? tambah
+consumer
+41
+--- Page 42 ---
+Event streaming: satu event hanya satu consumer
+42
+--- Page 43 ---
+Publish and subscribe model (pub/sub model)
+Beberapa consumers dapat memproses message yang sama
+Pub/sub model bisa menjamin urutan penerimaan message
+(stateful)
+Producers broadcast messages yang berminat. Consumer
+yang berminat subscribing topic.
+43
+--- Page 44 ---
+44
+--- Page 45 ---
+Contoh penggunaan, penanganan burst (push vs pull)
+45
+--- Page 46 ---
+Contoh
+pola koordinasi
+event
+46
+--- Page 47 ---
+Priority Based
+47
+--- Page 48 ---
+Event Streaming; Azure Storage Queue
+48
+--- Page 49 ---
+Event Streaming; AWS: SQS simple queue service
+49
+--- Page 50 ---
+50
+--- Page 51 ---
+Azure Service Bus
+51
+--- Page 52 ---
+52
+--- Page 53 ---
+Alternatif open source untuk event driven
+53
+--- Page 54 ---
+Kelebihan
+Loosely coupled architecture → scalable
+Tidak perlu periksa sources berkali-kali untuk melihat data sudah
+berubah
+Mengurangi direct point-to-point communication → mengurangi
+kompleksitas.
+54
+--- Page 55 ---
+Kelemahan
+Tidak cocok untuk aplikasi yang synchronous → tambah rumit
+Sulit didebug
+55
+--- Page 56 ---
+Synchronous Messaging
+RESTful
+56
+--- Page 57 ---
+Synchronous
+Messaging:
+GraphQL
+57
+--- Page 58 ---
+Websocket
+TCP over the web
+supports full duplex
+58
+--- Page 59 ---
+gRPC (Google Remote Procedure Call)
+eksekusi
+seolah-olah
+lokal → kinerja
+tinggi.
+59
+--- Page 60 ---
+60
+--- Page 61 ---
+Stream Processing
+Stream: sequence event
+61
+--- Page 62 ---
+Perlu dirapikan…..
+62
+--- Page 63 ---
+Communication
+Komunikasi antar microservice maupun dengan dunia luar
+Synchronous & Async
+63
+--- Page 64 ---
+Connectivity & Composition
+Connectivity: Hubungan antar microservice
+Composition: integrasi microservice yang terkait
+Dulu enterprise service bus (ESB)
+64
+--- Page 65 ---
+Data Management
+Decentralized data management
+Data composition Data scaling,
+Data store implementations
+Handling transactions
+Caching.
+65
+--- Page 66 ---
+Event Driven Architecture
+Event delivery patterns (queue-based, pub-sub)
+Delivery semantics and reliability
+Event schemas
+66
+
+
+================================================================================
+=== MODULE: 04 - Containerization.pdf ===
+================================================================================
+
+Total pages: 60
+
+--- Page 1 ---
+Containerization
+Feb 2026
+1
+--- Page 2 ---
+"Cloud Native architecture is all about building software
+applications as a collection of independent, loosely coupled,
+business capability–oriented services (microservices) that can run
+on dynamic environments (public, private, hybrid, multicloud) in an
+automated, scalable, resilient, manageable, and observable way."
+Design Patterns for Cloud Native
+Applications
+2
+--- Page 3 ---
+Fitur-Fitur Microservice
+Services are assembled and built around business domains and
+capabilities.
+Services should be able to be developed using different operating systems,
+programming languages, data stores, and hardware infrastructure and still be
+able to communicate with each other because of their common protocol and
+agreed-upon APIs (Application Programming Interfaces).
+Services are built and released using an automated process – most often a
+continuous integration (CI) and continuous delivery (CD) methodology.
+3
+--- Page 4 ---
+Fitur-Fitur Microservice
+Services have a well-defined interface and operations. Both consumers
+and producers of services know exactly what the interfaces are.
+Service interfaces normally stay the same or at least have background
+compatibility when code is changed. Therefore, clients of these services
+do not need to make changes when the code in the service is changed.
+Services are maintainable and testable. Often, these tests can be fully
+automated via a CI/CD process.
+4
+--- Page 5 ---
+Contoh
+pola koordinasi
+antar
+microservice
+5
+--- Page 6 ---
+Containerization?
+"Services should be able to be developed using different
+operating systems, programming languages, data stores, and
+hardware infrastructure"
+"Service harus otonom/independen, release cycle tersendiri
+(build, deploy), bisa punya tim tersendiri, data tersendiri, scaling
+independen, desentralisasi"
+6
+--- Page 7 ---
+Containerization
+Container
+App App App
+bins/libs bins/libs bins/libs
+Container Engine: Docker
+Host OS
+Hardware
+container: library, system tools, runtime env (contoh python)
+7
+--- Page 8 ---
+8
+--- Page 9 ---
+9
+--- Page 10 ---
+10
+--- Page 11 ---
+Virtualization, pra containerization
+11
+--- Page 12 ---
+Virtualization: Menjalankan berbagai OS pada satu hardware.
+Mengapa? efisien (utilisasi mesin), keamanan (isolasi),
+encapsulation (OS lengkap, cocok untuk R&D, devops),
+portability (VM bisa pindah host), sentralisasi pengelolaan.
+12
+--- Page 13 ---
+Sejarah
+1960-an: VM/370
+1970-80: tidak populer
+(penyebab PC, hardware murah, multi proses OS)
+1990 akhir: populer lagi (multi OS & konfigurasi, VMWare)
+>2000an: Penting: Cloud, Docker, Kubernetes
+(hardware assisted, aplikasi kompleks, devops)
+13
+--- Page 14 ---
+Virtual Machine (VM): Guest OS
+App App App App
+VM VM VM VM
+Virt. Platform/Hypervisor/VMM:
+VMware, KVM, Virtualbox, Qemu
+Host OS
+Hardware
+14
+--- Page 15 ---
+Virtual Machine (VM): Bare Metal
+App App App App
+VM VM VM VM
+Virt. Platform
+Hardware
+15
+--- Page 16 ---
+16
+Operating System Concepts 10th Edition, Silberschatz, Galvin, and Gagne
+--- Page 17 ---
+VMware: Bare Metal
+https://www.vmware.com/pdf/virtualization.pdf
+17
+--- Page 18 ---
+App App
+App App
+VM VM
+VM VM
+Virt.
+Platform
+App App
+Virt. Platform
+Host OS Host OS
+Hardware Hardware Hardware
+hosted bare metal
+18
+--- Page 19 ---
+Hosted vs Bare-Metal
+https://www.vmware.com/pdf/virtualization.pdf 19
+--- Page 20 ---
+20
+--- Page 21 ---
+Harus dipenuhi oleh virtualization:
+Fidelity: identik dengan akses hardware langsung.
+Kinerja: sesedikit mungkin penurunan kinerja
+kenapa kinerja turun?
+Keamanan: VM terisolasi satu dengan lain
+21
+--- Page 22 ---
+Hardware-Assisted Virtualization:
+Intel VT-x & AMD-V
+Mengatasi masalah x86 virtualization.
+2005 mulai; 2015 semua chips support.
+VMM bisa aktifkan: Host & Guest Mode
+Pengelolaan Memory
+Pengelolaan IO
+22
+--- Page 23 ---
+Manfaat VM
+Efisien (utilisasi mesin)
+Keamanan (isolasi)
+Encapsulation (OS lengkap, cocok untuk R&D, minim setting
+env, devops)
+Portability (VM bisa pindah host)
+Sentralisasi pengelolaan
+[100 server, per server 20 VM] vs [2000 server]
+23
+--- Page 24 ---
+Masalah VM
+Setiap VM memerlukan dedicated OS yang mengkonsumsi
+CPU, RAM dst.
+VMs lambat untuk booting & running
+Setiap OS memerlukan patching & monitoring → perlu
+resources
+24
+--- Page 25 ---
+Solusi: Containerization
+Container
+App App App
+perbedaan
+dengan bins/libs bins/libs bins/libs
+Virtualization?
+Container Engine: Docker
+Host OS
+Hardware
+container: library, system tools, runtime env (contoh python)
+25
+--- Page 26 ---
+Container vs VM
+Share kernel antara container (tidak ada guest OS).
+Lebih kecil, lebih ringan daripada VM.
+26
+--- Page 27 ---
+Container
+Container: running process yang terisolasi
+Container image: binary berisi semua yang diperlukan app
+untuk dijalankan.
+Container image disimpan di container registry.
+Containerization: microservices atau app yang berjalan di atas
+containers
+27
+--- Page 28 ---
+28
+--- Page 29 ---
+Microservice pada container
+Execution consistency di environments yang berbeda
+(mesin dev → mesin prod)
+Portabilitas Microservice → mudah pindah cloud
+Ringan jadi lebih mudah untuk auto-scaling
+Kubernetes, Minikube: manage container
+29
+--- Page 30 ---
+Microservice dengan Serverless Function
+Microservices that need to support bursts of loads, batch
+jobs, and event-driven services are suitable to be
+implemented using serverless functions.
+30
+--- Page 31 ---
+2013: dock worker =
+docker
+Solomon Hykes
+31
+--- Page 32 ---
+32
+--- Page 33 ---
+Docker File:
+Docker Image
+template
+read-only berisi
+instruksi untuk
+membuat
+container
+33
+--- Page 34 ---
+Container
+Instance
+(runtime) dari
+image
+34
+--- Page 35 ---
+Contoh Beberapa container yang jalan
+bersamaan
+35
+--- Page 36 ---
+36
+--- Page 37 ---
+Docker Compose: Multi Container Setup
+37
+--- Page 38 ---
+38
+--- Page 39 ---
+39
+--- Page 40 ---
+Kelebihan Docker
+Standar: reusable images
+Scalability: gampang mereplikasi container .
+Lebih kecil, ringan dan cepat daripada VM.
+Speed: environments bisa dibuat dalam orde detik
+Isolation: Antar container tidak saling memengaruhi (multi db, multi web server)
+Cloud Agnostic, Portability Tidak perlu memikirkan app environtment (contoh:
+dev menggunakan lib versi berbeda dengan server produksi)
+Cocok untuk microservice, satu service satu container.
+40
+--- Page 41 ---
+Devops tanpa
+Containerization
+Devops dengan
+Containerization
+Kane, Mathias 2023
+41
+--- Page 42 ---
+Dockerized Database
+Data persistence (DB diasumsikan menyimpan permanen
+data) tapi container sering berumur pendek. Solusi:
+persistence volume.
+Kinerja (akses ke memory, cpu, disk). Solusi: resources
+limit.
+42
+--- Page 43 ---
+Docker & Cloud (Kubernetes)
+Amazon Elastic Kubernetes Service (Amazon EKS)
+Google Kubernetes Engine
+Azure Kubernetes Service (AKS)
+Amazon Elastic Container Service (Amazon ECS) → non
+kubernetes
+43
+--- Page 44 ---
+The Open Container Initiative (OCI)
+Podman
+OrbStack
+nerdctl
+LXC
+44
+--- Page 45 ---
+Podman vs Docker
+Docker: model client server, ada docker daemon. Kelemahan →
+daemon mati, semua docker di bawahnya ikut mati (single point of
+failure). Security → daemon running sebagai root.
+Podman → container process biasa, rootless
+45
+--- Page 46 ---
+Serverless Container pada Cloud
+Amazon Fargate
+Google Cloud Run
+Red Hat OpenShift
+IBM Cloud Code Engine, IBM OpenShift
+Azure Container Instances (ACI)
+Amazon Elastic Beanstalk
+Google App Engine
+46
+--- Page 47 ---
+Batasan Docker
+Docker lebih cocok untuk service yang stateless (data &
+state disimpan eksternal) → container independen &
+dynamic gampang di-destroy, di-create, horizontal scaling.
+47
+--- Page 48 ---
+Orchestration
+Deploy services
+Scale up & down berdasarkan demand.
+Self-heal
+restart container otomatis, rerouting, replacing
+Rollouts & rollbacks
+Tools: Kubernetes
+48
+--- Page 49 ---
+Fitur Utama Orchestration
+Automatic provisioning (create, delete otomatis berdasarkan rule)
+High availability (auto restart)
+Scaling & load balancing
+Resource management
+Service interfaces → expose ke sistem eksternal
+Networking infrastructure abstractions → komunikasi antar container
+Service discovery
+Health Monitoring
+Rolling upgrade → incremental upgrade, zero downtime
+Logical separation → namespace
+49
+--- Page 50 ---
+κυβερνήτης (kubernḗtēs) (K8s),
+yang berarti 'governor',
+'helmsman' atau 'pilot
+Google: Craig
+McLuckie, Joe Beda,
+Brendan Burns
+50
+--- Page 51 ---
+Fitur
+Automated deployment & scaling
+High availability: ada nodes down app tetap berjalan.
+Extensibility: banyak add-ons & plugins.
+Portability: cloud-agnostic
+> 2022: tidak lagi menggunakan Docker untuk runtime.
+51
+--- Page 52 ---
+Kubernetes: Deklaratif
+Contoh
+deklarasi: "5 instance service X" → aktual 3 instance (2
+crash) → tambah 3 instance (reconciliation loop)
+Pengendali: Control Pane
+Eksekusi: Worker Nodes
+52
+--- Page 53 ---
+Komponen
+Kubernetes
+A pod is the basic deployment unit representing an application
+runtime that runs on a given node. One pod can have one or more
+containers running inside it. A pod is assigned a unique IP address
+within the Kubernetes cluster.
+53
+--- Page 54 ---
+Cluster, terdiri dari multi node.
+Control plane: minimal satu;
+self-healing, autoscaling, and
+Poulton 2025
+rollouts.
+54
+--- Page 55 ---
+Control Plane Node
+55
+--- Page 56 ---
+Poulton 2025
+56
+--- Page 57 ---
+Worker Node
+Poulton 2025
+57
+--- Page 58 ---
+Alternatif Kubernetes: Minikube, Kind, K3s
+Minikube: dapat digunakan mensimulasikan Kubernetes di
+satu mesin.
+K3 → jika hardware terbatas
+58
+--- Page 59 ---
+Persistence & State
+todo
+59
+--- Page 60 ---
+Security & Best Practices
+todo
+60
+
+
+================================================================================
+=== MODULE: 05 - Devops untuk Cloud Native.pdf ===
+================================================================================
+
+Total pages: 40
+
+--- Page 1 ---
+Devops untuk Cloud Native
+--- Page 10 ---
+Review: Karakter Cloud Native App
+Distributed: multiple, cooperating, distributed microservices
+Resilient & scalable
+Automatable
+Ubiquitous & flexible
+Dynamic
+Observable: monitoring, logging, tracing, and metrics
+--- Page 11 ---
+Mengapa Devops?
+Dulu: developing dan operating software + infra
+dilakukan tim berbeda
+Sekarang: kompleksitas distributed systems terkait
+recovering from failures, handling timeouts, smoothly
+upgrading versions → dev perlu lebih terintegrasi
+dengan ops
+--- Page 12 ---
+Devops
+"With DevOps, much of the traditional IT operations work
+happens before code reaches production. Every release
+includes monitoring, logging, and A/B testing. CI/CD
+pipelines automatically run unit tests, security scanners,
+and policy checks on every commit. Deployments are
+automatic."
+Jordan Bach
+--- Page 13 ---
+Roles terkait Devops
+Devops Engineer
+Cloud Engineer
+Backend Engineer
+--- Page 14 ---
+Topik
+Orchestration & Configuration
+GitOps
+CI/CD
+IaC
+Observability
+Security, Policy as Code
+--- Page 15 ---
+Tools
+Orchestration: Kubernetes, minicube, kind
+Configuration: Helm, Kustomize
+GitOps: Argo Workflow, ArgoCD
+CI/CD: Jenkin, GitHub Actions, CircleCI
+Infra as a Code: OpenTofu, Terraform, Ansible
+Observability: Prometheus, Grafana
+Connectivity: Istio
+Security, Policy as Code: OPA
+--- Page 16 ---
+Container Orchestration (contoh: Kubernetes)
+Mengelola container (orde ratusan).
+"Sistem Operasi" pada distributed system.
+Devops pada container orchestration → otomatisasi terkait
+deploy, upgrade, networking, failover, centralized logging,
+monitoring, load balancing, autoscaling
+--- Page 17 ---
+Container Orchestration
+Alokasi resource untuk container (scheduling)
+Jumlah instance (auto scaling)
+Penanganan crash (failover)
+Komunikasi dan discovery antar service.
+Update/Upgrade tanpa downtime.
+--- Page 18 ---
+Tantangan Database pada Orchestrating Container
+"Orchestrating software in containers involves
+spinning up new interchangeable instances without
+requiring coordination between them. But database
+replicas are not interchangeable; they each have a
+unique state, and deploying a database replica
+requires coordination with other nodes to ensure
+things like schema changes happen everywhere at
+the same time." -- Sean Loiselle
+--- Page 20 ---
+Kubernetes
+Object
+Replicaset: identical
+pod
+Pod: satu atau lebih
+container yang saling
+terkait
+--- Page 21 ---
+Contoh apiVersion: apps/v1
+kind: Deployment
+YAML Deployment
+metadata:
+name: web-server
+spec:
+replicas: 3
+selector:
+matchLabels:
+app: my-web-app
+template:
+metadata:
+labels:
+app: my-web-app
+spec:
+containers:
+- name: nginx
+image: nginx:1.25
+ports:
+- containerPort: 80
+--- Page 22 ---
+Kubernetes Object: Deployment
+Rolling & Rollback Update, contoh: versi 2 start, setelah
+running & healthy, versi 1 di-kill.
+Scaling: update jumlah replicas, otomatis pods di-create.
+Self-Healing: pod mati, otomatis di-restart.
+--- Page 23 ---
+Self Healing
+langsung pod baru di-create otomatis …
+--- Page 24 ---
+Kubernetes Service Resource
+Pod multireplica dan
+bisa di-create dan
+destroy kapan saja,
+tidak punya IP tetap.
+--- Page 25 ---
+Service: internal
+traffict, load balancing
+--- Page 26 ---
+Ingress
+External traffict.
+SSL, rate limiter
+--- Page 27 ---
+Ingress
+--- Page 28 ---
+Ingress Controller
+Google Cloud Load Balancer Controller
+AWS Load Balancer Controller
+Application Gateway Inggress Controller (AGIC, azure)
+NGINX Ingress Controller
+Contour
+Kong
+--- Page 29 ---
+Service Mesh (Contoh: Istio)
+more complex network operations such as rate-limiting and
+encrypting network traffic between microservices.
+logging for requests flowing through the network, keeping track
+of how long requests are taking, or tracing where a request
+started and what path it took through the various microservices
+along the way.
+--- Page 30 ---
+Deployment
+Rolling update: pod app versi baru dijalankan, pod versi lama
+dimatikan secara bertahap.
+Blue/Green Deployment: Versi baru (blue) jalan paralel (sampai
+di-flag green)
+Rainbow Deployment: Beberapa versi berjalan
+Canary Deployment: beberapa pod versi baru dicoba, jika berhasil
+perluas jika gagal rollback gunakan pod versi lama.
+--- Page 31 ---
+Configuration (Helm & Kustomize)
+Package Manager (seperti NPM)
+Configuring & deploying Kubernetes applications, tidak perlu
+langsung ke raw YAML (lebih simple)
+--- Page 32 ---
+Aspek Pengelolaan Lain
+Resource limit
+Liveness Probes
+Cluster (umumnya hanya perlu 2: prod dan staging)
+Pod & Container Security
+Manajemen Pod dan Container.
+Secret.
+Security, Backup
+Access Control (RBAC)
+--- Page 33 ---
+Trend di masa depan?
+Orchestrating dilakukan di background
+GKE Autopilot, EKS Automode, AKS Automatic:
+fully managed
+Clusterless Container Services:
+Azure Container Instance, AWS Fargate, Google Cloud Run
+Cloud function: stateless, short running, event based
+--- Page 34 ---
+Continues Deployment (CD) di Kubernetes
+CD: automatic deployment of successful builds to
+production
+Continuous Integration (CI): automatic integration and
+testing of developers’ changes against the mainline
+branch
+--- Page 35 ---
+Pipeline for containerized applications
+1. A developer pushes their code changes to the repository.
+2. The build system automatically builds the current version of the code and
+runs tests.
+3. If all tests pass, the container image will be published into the central
+container registry.
+4. The newly built container is deployed automatically to a staging
+environment
+5. The staging environment undergoes some automated and/or manual
+acceptance tests.
+6. The verified container image is deployed to production.
+--- Page 36 ---
+Tools
+Github Action
+Gitlab CI
+Azure Pipelines
+Google Cloud Build
+Codefresh
+Self Hosted:
+Jenkins
+Argo
+Tekton
+--- Page 37 ---
+Observability, Monitoring & Metric
+todo

@@ -1,17 +1,16 @@
 package main
 
 import (
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"time"
-	"sync"
-	"fmt"
-	"github.com/nusaroute/pkg/logger"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/nusaroute/pkg/logger"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/nusaroute/pkg/database"
 	"github.com/nusaroute/pkg/events"
@@ -25,7 +24,7 @@ import (
 
 func main() {
 	logger.InitLogger("resolution-service")
-	logger.Info(context.Background(), fmt.Sprint("🚀 Starting NusaRoute Resolution Service..."))
+	logger.Info(context.Background(), fmt.Sprint(" Starting NusaRoute Resolution Service..."))
 	port := getEnv("PORT", "8010")
 	kafkaBrokers := strings.Split(getEnv("KAFKA_BROKERS", "localhost:9092"), ",")
 
@@ -34,7 +33,9 @@ func main() {
 		User: getEnv("DB_USER", "nusaroute"), Password: getEnv("DB_PASSWORD", ""),
 		DBName: getEnv("DB_NAME", "nusaroute_resolution"),
 	})
-	if err != nil { logger.Log.Fatal(fmt.Sprintf("DB failed: %v", err)) }
+	if err != nil {
+		logger.Log.Fatal(fmt.Sprintf("DB failed: %v", err))
+	}
 	defer db.Close()
 
 	producer := kafka.NewProducer(kafkaBrokers)
@@ -45,7 +46,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var wg sync.WaitGroup
 
 	cg := kafka.NewConsumerGroup()
 
@@ -74,10 +74,16 @@ func main() {
 
 	mux.HandleFunc("POST /api/v1/resolutions/tickets", func(w http.ResponseWriter, r *http.Request) {
 		var req model.CreateTicketRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil { response.BadRequest(w, "invalid body"); return }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
 		userID := middleware.GetUserID(r.Context())
 		ticket := &model.Ticket{OrderID: req.OrderID, AWB: req.AWB, UserID: userID, Type: req.Type, Description: req.Description}
-		if err := resolutionSvc.CreateTicket(r.Context(), ticket); err != nil { response.InternalError(w, err.Error()); return }
+		if err := resolutionSvc.CreateTicket(r.Context(), ticket); err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
 		response.Created(w, "ticket created", ticket)
 	})
 
@@ -85,14 +91,19 @@ func main() {
 		parts := strings.Split(r.URL.Path, "/")
 		id := parts[len(parts)-1]
 		ticket, err := resolutionSvc.GetTicketByID(r.Context(), id)
-		if err != nil { response.NotFound(w, "ticket not found"); return }
+		if err != nil {
+			response.NotFound(w, "ticket not found")
+			return
+		}
 		response.Success(w, "ticket retrieved", ticket)
 	})
 
 	mux.HandleFunc("GET /api/v1/resolutions/tickets", func(w http.ResponseWriter, r *http.Request) {
 		status := r.URL.Query().Get("status")
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		if page < 1 { page = 1 }
+		if page < 1 {
+			page = 1
+		}
 		tickets, total, _ := resolutionSvc.ListTickets(r.Context(), status, page, 20)
 		response.Paginated(w, tickets, page, 20, total)
 	})
@@ -101,16 +112,28 @@ func main() {
 		parts := strings.Split(r.URL.Path, "/")
 		id := parts[len(parts)-1]
 		var req model.UpdateTicketRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil { response.BadRequest(w, "invalid body"); return }
-		if err := resolutionSvc.UpdateTicket(r.Context(), id, req); err != nil { response.InternalError(w, err.Error()); return }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		if err := resolutionSvc.UpdateTicket(r.Context(), id, req); err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
 		response.Success(w, "ticket updated", nil)
 	})
 
 	mux.HandleFunc("POST /api/v1/resolutions/claims", func(w http.ResponseWriter, r *http.Request) {
 		var req model.CreateClaimRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil { response.BadRequest(w, "invalid body"); return }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
 		claim := &model.Claim{TicketID: req.TicketID, OrderID: req.OrderID, ClaimType: req.ClaimType, Amount: req.Amount}
-		if err := resolutionSvc.CreateClaim(r.Context(), claim); err != nil { response.InternalError(w, err.Error()); return }
+		if err := resolutionSvc.CreateClaim(r.Context(), claim); err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
 		response.Created(w, "claim created", claim)
 	})
 
@@ -118,7 +141,10 @@ func main() {
 		parts := strings.Split(r.URL.Path, "/")
 		id := parts[len(parts)-1]
 		claim, err := resolutionSvc.GetClaimByID(r.Context(), id)
-		if err != nil { response.NotFound(w, "claim not found"); return }
+		if err != nil {
+			response.NotFound(w, "claim not found")
+			return
+		}
 		response.Success(w, "claim retrieved", claim)
 	})
 
@@ -128,15 +154,20 @@ func main() {
 
 	var h http.Handler = mux
 	h = middleware.CORS(h)
+	h = middleware.HeaderAuth(h)
 	h = middleware.Logging(h)
 	h = middleware.Recovery(h)
 	h = middleware.Metrics(h)
 
-	logger.Info(context.Background(), fmt.Sprintf("✅ Resolution Service running on port %s", port))
-	if err := http.ListenAndServe(":"+port, h); err != nil { logger.Log.Fatal(fmt.Sprintf("Server failed: %v", err)) }
+	logger.Info(context.Background(), fmt.Sprintf(" Resolution Service running on port %s", port))
+	if err := http.ListenAndServe(":"+port, h); err != nil {
+		logger.Log.Fatal(fmt.Sprintf("Server failed: %v", err))
+	}
 }
 
 func getEnv(key, def string) string {
-	if v := os.Getenv(key); v != "" { return v }
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
 	return def
 }

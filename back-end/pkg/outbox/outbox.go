@@ -82,14 +82,22 @@ func (w *Worker) processEvents(ctx context.Context) {
 		return // Cannot publish if producer is nil (e.g. in tests)
 	}
 
+	tx, err := w.db.BeginTxx(ctx, nil)
+	if err != nil {
+		log.Printf("[Outbox] Failed to begin tx: %v", err)
+		return
+	}
+	defer tx.Rollback() // Ignored if committed
+
 	// Fetch up to 50 pending events
 	var events []OutboxEvent
-	err := w.db.SelectContext(ctx, &events, `
+	err = tx.SelectContext(ctx, &events, `
 		SELECT id, topic, payload, status, created_at, processed_at
 		FROM outbox_events
 		WHERE status = 'PENDING'
 		ORDER BY created_at ASC
 		LIMIT 50
+		FOR UPDATE SKIP LOCKED
 	`)
 	if err != nil {
 		log.Printf("[Outbox] Error fetching events: %v", err)
@@ -101,7 +109,7 @@ func (w *Worker) processEvents(ctx context.Context) {
 		var payloadMap map[string]interface{}
 		if err := json.Unmarshal(evt.Payload, &payloadMap); err != nil {
 			log.Printf("[Outbox] Error unmarshaling event %s: %v", evt.ID, err)
-			w.markFailed(context.Background(), evt.ID)
+			tx.ExecContext(ctx, "UPDATE outbox_events SET status = 'FAILED', processed_at = $1 WHERE id = $2", time.Now(), evt.ID)
 			continue
 		}
 
@@ -113,20 +121,10 @@ func (w *Worker) processEvents(ctx context.Context) {
 		}
 
 		// Mark as PROCESSED
-		w.markProcessed(context.Background(), evt.ID)
+		tx.ExecContext(ctx, "UPDATE outbox_events SET status = 'PROCESSED', processed_at = $1 WHERE id = $2", time.Now(), evt.ID)
 	}
-}
 
-func (w *Worker) markProcessed(ctx context.Context, id string) {
-	_, err := w.db.ExecContext(ctx, "UPDATE outbox_events SET status = 'PROCESSED', processed_at = $1 WHERE id = $2", time.Now(), id)
-	if err != nil {
-		log.Printf("[Outbox] Failed to mark event %s as processed: %v", id, err)
-	}
-}
-
-func (w *Worker) markFailed(ctx context.Context, id string) {
-	_, err := w.db.ExecContext(ctx, "UPDATE outbox_events SET status = 'FAILED', processed_at = $1 WHERE id = $2", time.Now(), id)
-	if err != nil {
-		log.Printf("[Outbox] Failed to mark event %s as failed: %v", id, err)
+	if err := tx.Commit(); err != nil {
+		log.Printf("[Outbox] Failed to commit tx: %v", err)
 	}
 }

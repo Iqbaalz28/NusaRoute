@@ -1,13 +1,28 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { apiGet } from "@/lib/api";
+import { VolumeDataPoint } from "@/lib/types";
 
 export const VolumeChart = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [chartData, setChartData] = useState<VolumeDataPoint[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await apiGet<VolumeDataPoint[]>('/api/v1/dashboard/volume', { requiresAuth: true });
+        setChartData(data);
+      } catch (err) {
+        console.error("Failed to load volume data:", err);
+      }
+    };
+    fetchData();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || chartData.length === 0) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -23,12 +38,17 @@ export const VolumeChart = () => {
     canvas.height = height * dpr;
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
+    
+    // Clear previous drawing
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
     ctx.scale(dpr, dpr);
 
     const W = width, H = height;
-    const data = [12400, 14200, 11800, 15600, 16800, 14900, 15847];
-    const labels = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
-    const maxVal = Math.max(...data) * 1.15;
+    const data = chartData.map(d => d.count);
+    const labels = chartData.map(d => d.date.split(" ")[0]); // E.g., 'May 20' -> 'May' or just use as is
+    
+    const maxVal = Math.max(...data, 1000) * 1.15;
     const pad = { top: 20, right: 20, bottom: 40, left: 60 };
     const chartW = W - pad.left - pad.right;
     const chartH = H - pad.top - pad.bottom;
@@ -55,7 +75,7 @@ export const VolumeChart = () => {
     gradient.addColorStop(1, "rgba(255,107,74,0.01)");
 
     const points = data.map((v, i) => ({
-      x: pad.left + (chartW / (data.length - 1)) * i,
+      x: pad.left + (chartW / (Math.max(data.length - 1, 1))) * i,
       y: pad.top + chartH - (v / maxVal) * chartH,
     }));
 
@@ -97,7 +117,11 @@ export const VolumeChart = () => {
       ctx.textAlign = "center";
       ctx.fillText(l, points[i].x, H - pad.bottom + 25);
     });
-  }, []);
+  }, [chartData]);
+
+  if (chartData.length === 0) {
+    return <div className="w-full h-[280px] flex items-center justify-center text-muted border-2 border-dashed border-border rounded-xl">Memuat data volume...</div>;
+  }
 
   return <canvas ref={canvasRef} className="w-full h-[280px]"></canvas>;
 };

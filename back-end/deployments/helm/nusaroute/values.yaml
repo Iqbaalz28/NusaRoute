@@ -1,0 +1,50 @@
+# Default values for nusaroute.
+# This is a YAML-formatted file.
+
+global:
+  namespace: nusaroute
+  istioInjection: true
+
+image:
+  registry: nusaroute
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+secrets:
+  jwtSecret: ""
+  dbUser: "nusaroute"
+  dbPassword: ""
+  redisPassword: ""
+  mongoUri: ""
+
+services:
+  apiGateway:
+    replicas: 2
+  user:
+    replicas: 2
+  payment:
+    replicas: 2
+  pricing:
+    replicas: 2
+  order:
+    replicas: 3
+  courier:
+    replicas: 2
+  dispatch:
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+  hub:
+    replicas: 2
+  tracking:
+    replicas: 5
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 20
+  notification:
+    replicas: 2
+  resolution:
+    replicas: 2

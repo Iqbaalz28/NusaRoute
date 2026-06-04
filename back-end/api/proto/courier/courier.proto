@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package courier;
+
+option go_package = "github.com/nusaroute/services/courier-service/pkg/grpc/pb";
+
+service CourierService {
+  rpc GetCourierLocation (CourierLocationRequest) returns (CourierLocationResponse) {}
+  rpc GetAvailableCouriers (AvailableCouriersRequest) returns (AvailableCouriersResponse) {}
+}
+
+message CourierLocationRequest {
+  string courier_id = 1;
+}
+
+message CourierLocationResponse {
+  double latitude = 1;
+  double longitude = 2;
+  string status = 3;
+}
+
+message AvailableCouriersRequest {
+  double latitude = 1;
+  double longitude = 2;
+  double radius_km = 3;
+}
+
+message CourierInfo {
+  string id = 1;
+  string full_name = 2;
+  string phone = 3;
+  double current_lat = 4;
+  double current_lng = 5;
+}
+
+message AvailableCouriersResponse {
+  repeated CourierInfo data = 1;
+}

@@ -8,6 +8,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+type contextKey string
+
+const TraceIDKey contextKey = "TraceID"
+
 var Log *zap.Logger
 
 func init() {
@@ -31,7 +35,7 @@ func InitLogger(serviceName string) {
 
 // WithTrace returns a logger instance with the TraceID from the context, if present.
 func WithTrace(ctx context.Context) *zap.Logger {
-	traceID, ok := ctx.Value("TraceID").(string)
+	traceID, ok := ctx.Value(TraceIDKey).(string)
 	if ok && traceID != "" {
 		return Log.With(zap.String("trace_id", traceID))
 	}
@@ -40,7 +44,7 @@ func WithTrace(ctx context.Context) *zap.Logger {
 
 // GetTraceID returns the TraceID from the context, or an empty string.
 func GetTraceID(ctx context.Context) string {
-	traceID, ok := ctx.Value("TraceID").(string)
+	traceID, ok := ctx.Value(TraceIDKey).(string)
 	if ok {
 		return traceID
 	}

@@ -19,10 +19,10 @@ type Assignment struct {
 }
 
 const (
-	AssignmentStatusAssigned  = "ASSIGNED"
-	AssignmentStatusPickedUp  = "PICKED_UP"
-	AssignmentStatusCompleted = "COMPLETED"
-	AssignmentStatusNoShow    = "NO_SHOW"
+	AssignmentStatusAssigned   = "ASSIGNED"
+	AssignmentStatusPickedUp   = "PICKED_UP"
+	AssignmentStatusCompleted  = "COMPLETED"
+	AssignmentStatusNoShow     = "NO_SHOW"
 	AssignmentStatusReassigned = "REASSIGNED"
 )
 

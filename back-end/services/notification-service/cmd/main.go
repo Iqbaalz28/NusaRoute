@@ -2,8 +2,6 @@ package main
 
 import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"time"
-	"sync"
 	"github.com/nusaroute/pkg/logger"
 	"context"
 	"encoding/json"
@@ -23,7 +21,7 @@ import (
 
 func main() {
 	logger.InitLogger("notification-service")
-	logger.Info(context.Background(), fmt.Sprint("🚀 Starting NusaRoute Notification Service..."))
+	logger.Info(context.Background(), fmt.Sprint(" Starting NusaRoute Notification Service..."))
 	port := getEnv("PORT", "8009")
 	kafkaBrokers := strings.Split(getEnv("KAFKA_BROKERS", "localhost:9092"), ",")
 
@@ -38,7 +36,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var wg sync.WaitGroup
+
 
 	cg := kafka.NewConsumerGroup()
 
@@ -118,6 +116,7 @@ func main() {
 
 	var h http.Handler = mux
 	h = middleware.CORS(h)
+	h = middleware.HeaderAuth(h)
 	h = middleware.Logging(h)
 	h = middleware.Recovery(h)
 	h = middleware.Metrics(h)

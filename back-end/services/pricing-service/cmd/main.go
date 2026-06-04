@@ -2,8 +2,6 @@ package main
 
 import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"time"
-	"sync"
 	"context"
 	"fmt"
 	"github.com/nusaroute/pkg/logger"
@@ -19,7 +17,7 @@ import (
 
 func main() {
 	logger.InitLogger("pricing-service")
-	logger.Info(context.Background(), fmt.Sprint("🚀 Starting NusaRoute Pricing Service..."))
+	logger.Info(context.Background(), fmt.Sprint(" Starting NusaRoute Pricing Service..."))
 	port := getEnv("PORT", "8003")
 
 	db, err := database.ConnectPostgres(database.PostgresConfig{
@@ -39,15 +37,14 @@ func main() {
 	pricingSvc := service.NewPricingService(pricingRepo, redisClient)
 	pricingHandler := handler.NewPricingHandler(pricingSvc)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	var wg sync.WaitGroup
+
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	pricingHandler.RegisterRoutes(mux)
 
 	var h http.Handler = mux
 	h = middleware.CORS(h)
+	h = middleware.HeaderAuth(h)
 	h = middleware.Logging(h)
 	h = middleware.Recovery(h)
 	h = middleware.Metrics(h)

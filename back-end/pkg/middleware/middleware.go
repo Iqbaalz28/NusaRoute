@@ -4,6 +4,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -80,6 +81,11 @@ func JWTAuth(secret string) func(http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, UserRoleKey, claims.Role)
 			ctx = context.WithValue(ctx, EmailKey, claims.Email)
 
+			// Inject into headers for downstream proxying
+			r.Header.Set("X-User-ID", claims.UserID)
+			r.Header.Set("X-User-Role", claims.Role)
+			r.Header.Set("X-User-Email", claims.Email)
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -119,7 +125,7 @@ func Logging(next http.Handler) http.Handler {
 		}
 
 		// Inject TraceID into context
-		ctx := context.WithValue(r.Context(), "TraceID", traceID)
+		ctx := context.WithValue(r.Context(), logger.TraceIDKey, traceID)
 		r = r.WithContext(ctx)
 
 		// Set response header for client tracing
@@ -159,10 +165,30 @@ func Recovery(next http.Handler) http.Handler {
 
 // CORS middleware handles Cross-Origin Resource Sharing.
 func CORS(next http.Handler) http.Handler {
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		// Fallback for local development if not set
+		allowedOrigins = "http://localhost:3000,http://localhost:8080"
+	}
+	allowedOriginList := strings.Split(allowedOrigins, ",")
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		originAllowed := false
+		
+		for _, o := range allowedOriginList {
+			if strings.TrimSpace(o) == origin || o == "*" {
+				originAllowed = true
+				break
+			}
+		}
+
+		if originAllowed {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+		
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Trace-ID")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -198,4 +224,23 @@ func GetUserRole(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// HeaderAuth middleware extracts user identity from HTTP headers (injected by API Gateway).
+func HeaderAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		userRole := r.Header.Get("X-User-Role")
+		userEmail := r.Header.Get("X-User-Email")
+
+		if userID != "" {
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx = context.WithValue(ctx, UserRoleKey, userRole)
+			ctx = context.WithValue(ctx, EmailKey, userEmail)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

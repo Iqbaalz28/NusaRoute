@@ -11,15 +11,25 @@ import (
 
 func TestDispatchFunctional(t *testing.T) {
 	host := os.Getenv("DB_HOST")
-	if host == "" { host = "localhost" }
+	if host == "" {
+		host = "localhost"
+	}
 	port := os.Getenv("DB_PORT")
-	if port == "" { port = "5432" }
+	if port == "" {
+		port = "5432"
+	}
 	user := os.Getenv("DB_USER")
-	if user == "" { user = "postgres" }
+	if user == "" {
+		user = "postgres"
+	}
 	pass := os.Getenv("DB_PASSWORD")
-	if pass == "" { pass = "postgres" }
+	if pass == "" {
+		pass = "postgres"
+	}
 	dbname := os.Getenv("DB_NAME")
-	if dbname == "" { dbname = "nusaroute_dispatch" }
+	if dbname == "" {
+		dbname = "nusaroute_dispatch"
+	}
 
 	db, err := database.ConnectPostgres(database.PostgresConfig{
 		Host: host, Port: port, User: user, Password: pass, DBName: dbname,
@@ -30,7 +40,7 @@ func TestDispatchFunctional(t *testing.T) {
 	}
 	defer db.Close()
 
-    // Add basic ping test
+	// Add basic ping test
 	if err := db.Ping(); err != nil {
 		t.Fatalf("failed to ping DB: %v", err)
 	}
