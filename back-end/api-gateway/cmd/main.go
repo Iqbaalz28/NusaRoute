@@ -227,6 +227,12 @@ func main() {
 					KeepAlive: 30 * time.Second,
 				}).DialContext,
 			}
+			proxy.ModifyResponse = func(resp *http.Response) error {
+				resp.Header.Del("Access-Control-Allow-Origin")
+				resp.Header.Del("Access-Control-Allow-Methods")
+				resp.Header.Del("Access-Control-Allow-Headers")
+				return nil
+			}
 			proxy.ServeHTTP(w, r)
 		})
 

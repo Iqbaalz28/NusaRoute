@@ -13,9 +13,9 @@ import (
 
 func main() {
 	dbUser := "nusaroute"
-	dbPass := "password123"
+	dbPass := "nusaroute_secret"
 	dbHost := "localhost"
-	dbPort := "5432"
+	dbPort := "5433"
 
 	// Connect to Order DB
 	orderDB, err := sqlx.Connect("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=nusaroute_order sslmode=disable", dbHost, dbPort, dbUser, dbPass))
@@ -52,12 +52,14 @@ func main() {
 
 func seedHubs(db *sqlx.DB) {
 	cities := []string{"Jakarta", "Bandung", "Surabaya", "Medan", "Makassar", "Bali", "Semarang", "Yogyakarta"}
+	provinces := []string{"DKI Jakarta", "Jawa Barat", "Jawa Timur", "Sumatera Utara", "Sulawesi Selatan", "Bali", "Jawa Tengah", "DI Yogyakarta"}
+	codes := []string{"JKT-02", "BDG-02", "SBY-02", "MDN-02", "MKS-02", "DPS-02", "SMG-02", "YK-02"}
 	for i, city := range cities {
 		_, err := db.Exec(`
-			INSERT INTO hubs (id, name, city, address, location_lat, location_lng, capacity, current_load, is_active)
+			INSERT INTO hubs (id, name, code, city, province, lat, lng, type, is_active)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			ON CONFLICT (id) DO NOTHING
-		`, fmt.Sprintf("hub-%d", i), "Hub "+city, city, "Jl. Utama "+city, -6.2+float64(i)*0.1, 106.8+float64(i)*0.1, 10000, 500, true)
+		`, fmt.Sprintf("hub-%d", i), "Hub "+city, codes[i], city, provinces[i], -6.2+float64(i)*0.1, 106.8+float64(i)*0.1, "SORTATION", true)
 		if err != nil {
 			log.Printf("Error seeding hub: %v", err)
 		}
@@ -91,11 +93,36 @@ func seedOrders(db *sqlx.DB) {
 			status = "DELIVERED" // Older orders are likely delivered
 		}
 
+		cost := 15000 + rand.Intn(50000)
+		weight := 1.0 + rand.Float64()*5.0
 		_, err := db.Exec(`
-			INSERT INTO orders (id, awb, user_id, status, service_type, sender_name, receiver_name, shipping_cost, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			INSERT INTO orders (
+				id, awb, user_id, status, service_type, 
+				sender_name, sender_phone, sender_address, 
+				receiver_name, receiver_phone, receiver_address, 
+				shipping_cost, total_cost, weight_kg,
+				created_at, updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 			ON CONFLICT (id) DO NOTHING
-		`, uuid.New().String(), fmt.Sprintf("NR%08d", rand.Intn(100000000)), uuid.New().String(), status, "REGULAR", "Sender "+fmt.Sprint(i), "Receiver "+fmt.Sprint(i), 15000+rand.Intn(50000), createdAt, createdAt)
+		`, 
+			uuid.New().String(), 
+			fmt.Sprintf("NR%08d", rand.Intn(100000000)), 
+			uuid.New().String(), 
+			status, 
+			"REGULAR", 
+			"Sender "+fmt.Sprint(i), 
+			"08123456789",
+			"Jl. Sender Address "+fmt.Sprint(i),
+			"Receiver "+fmt.Sprint(i), 
+			"08987654321",
+			"Jl. Receiver Address "+fmt.Sprint(i),
+			cost, 
+			cost,
+			weight,
+			createdAt, 
+			createdAt,
+		)
 		if err != nil {
 			log.Printf("Error seeding order: %v", err)
 		}
