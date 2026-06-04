@@ -33,7 +33,7 @@ type ServiceRoute struct {
 // RedisRateLimiter implements a fixed-window rate limiter using Redis.
 type RedisRateLimiter struct {
 	client *redis.Client
-	rate   int           // allowed requests per window
+	rate   int // allowed requests per window
 	window time.Duration
 }
 
@@ -51,7 +51,7 @@ func (rl *RedisRateLimiter) Allow(ip string) bool {
 	}
 	windowKey := time.Now().Unix() / int64(rl.window.Seconds())
 	key := fmt.Sprintf("ratelimit:%s:%d", ip, windowKey)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -88,7 +88,7 @@ func main() {
 		{Prefix: "/api/v1/orders", TargetURL: getEnv("ORDER_SERVICE_URL", "http://localhost:8004"), Public: false},
 		{Prefix: "/api/v1/couriers", TargetURL: getEnv("COURIER_SERVICE_URL", "http://localhost:8005"), Public: false},
 		{Prefix: "/api/v1/dispatch", TargetURL: getEnv("DISPATCH_SERVICE_URL", "http://localhost:8006"), Public: false},
-		{Prefix: "/api/v1/hub", TargetURL: getEnv("HUB_SERVICE_URL", "http://localhost:8007"), Public: false},
+		{Prefix: "/api/v1/hub", TargetURL: getEnv("HUB_SERVICE_URL", "http://localhost:8007"), Public: true},
 		{Prefix: "/api/v1/tracking", TargetURL: getEnv("TRACKING_SERVICE_URL", "http://localhost:8008"), Public: true},
 		{Prefix: "/api/v1/notifications", TargetURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8009"), Public: false},
 		{Prefix: "/api/v1/resolutions", TargetURL: getEnv("RESOLUTION_SERVICE_URL", "http://localhost:8010"), Public: false},
@@ -122,9 +122,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			resp, err := client.Get(getEnv("ORDER_SERVICE_URL", "http://localhost:8004") + "/api/v1/orders/stats")
-			if err == nil { defer resp.Body.Close() }
+			if err == nil {
+				defer resp.Body.Close()
+			}
 			if err == nil && resp.StatusCode == http.StatusOK {
-				var res struct { Data map[string]interface{} `json:"data"` }
+				var res struct {
+					Data map[string]interface{} `json:"data"`
+				}
 				json.NewDecoder(resp.Body).Decode(&res)
 				orderStats = res.Data
 			}
@@ -134,9 +138,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			resp, err := client.Get(getEnv("COURIER_SERVICE_URL", "http://localhost:8005") + "/api/v1/couriers/stats")
-			if err == nil { defer resp.Body.Close() }
+			if err == nil {
+				defer resp.Body.Close()
+			}
 			if err == nil && resp.StatusCode == http.StatusOK {
-				var res struct { Data map[string]interface{} `json:"data"` }
+				var res struct {
+					Data map[string]interface{} `json:"data"`
+				}
 				json.NewDecoder(resp.Body).Decode(&res)
 				courierStats = res.Data
 			}
@@ -146,9 +154,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			resp, err := client.Get(getEnv("HUB_SERVICE_URL", "http://localhost:8007") + "/api/v1/hub/stats")
-			if err == nil { defer resp.Body.Close() }
+			if err == nil {
+				defer resp.Body.Close()
+			}
 			if err == nil && resp.StatusCode == http.StatusOK {
-				var res struct { Data map[string]interface{} `json:"data"` }
+				var res struct {
+					Data map[string]interface{} `json:"data"`
+				}
 				json.NewDecoder(resp.Body).Decode(&res)
 				hubStats = res.Data
 			}
@@ -187,13 +199,15 @@ func main() {
 			return
 		}
 		defer resp.Body.Close()
-		
+
 		if resp.StatusCode != http.StatusOK {
 			response.InternalError(w, "failed to fetch volume stats")
 			return
 		}
 
-		var res struct { Data interface{} `json:"data"` }
+		var res struct {
+			Data interface{} `json:"data"`
+		}
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 			response.InternalError(w, err.Error())
 			return
@@ -242,6 +256,7 @@ func main() {
 		}
 
 		mux.Handle(route.Prefix+"/", proxyHandler)
+		mux.Handle(route.Prefix, proxyHandler) // Daftarkan juga rute tanpa slash
 	}
 
 	// Apply global middleware chain
