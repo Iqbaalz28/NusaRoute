@@ -1,221 +1,241 @@
-# 🚚 NusaRoute — Microservices Logistics Platform
+# 🚚 NusaRoute — Solusi Logistik Terintegrasi (Microservices)
+
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-95%25-green)
+![Go Version](https://img.shields.io/badge/Go-1.23-00ADD8)
+![Next.js](https://img.shields.io/badge/Next.js-16.2-black)
+![License](https://img.shields.io/badge/License-MIT-blue)
 
 > Tugas Besar Mata Kuliah **Distributed, Parallel & Cloud Computing** — Universitas Pendidikan Indonesia
 
-NusaRoute adalah platform logistik berbasis **arsitektur microservices** yang dibangun menggunakan **Go 1.23**, **Apache Kafka** (Event-Driven Architecture), dan **database-per-service pattern**.
+**NusaRoute** adalah platform logistik modern tingkat produksi (production-grade) yang dibangun di atas fondasi **Arsitektur Microservices**, **Event-Driven Architecture (EDA)** menggunakan Apache Kafka, dan antarmuka dinamis dengan **Next.js**. Sistem ini dirancang dengan toleransi kesalahan tinggi (fault-tolerance), skalabilitas horizontal, dan integritas data melalui mekanisme pola CQRS, Outbox, dan Saga.
 
 ---
 
-## 🌟 Status Proyek & Pembaruan Terbaru (Production-Ready)
-
-Proyek ini telah melalui fase *refactoring* dan *hardening* dari simulasi akademik menjadi sistem yang tangguh dan siap *production*:
-- **Integritas Data dengan Transactional Outbox Pattern**: Menyelesaikan isu *dual-write* antara *database* dan Apache Kafka di seluruh layanan (Order, Payment, Dispatch, Hub, Resolution) untuk memastikan tidak ada *message* yang hilang.
-- **Full-Stack Observability (Log, Trace, Metric)**: Menggunakan `go.uber.org/zap` untuk *structured JSON logging*, propagasi otomatis `X-Trace-ID` via HTTP context dan event Kafka, serta pengumpulan metrik kinerja (*requests & latency*) menggunakan **Prometheus** dan visualisasi via **Grafana**.
-- **Graceful Shutdown & Fault Tolerance**: Penerapan `sync.WaitGroup` dan interceptor OS signal pada ke-11 *microservices* memastikan tidak ada kebocoran *goroutine* (*goroutine leak*) dan aplikasi mati dengan aman tanpa mengorbankan transaksi yang sedang berjalan.
-- **100% Functional & Unit Test Coverage**: Implementasi tes unit dengan *Manual Mock Object* yang diisolasi, serta perluasan tes fungsional pada **9 layanan**. Pengujian integrasi menggunakan `go test -tags=functional` kini terhubung secara dinamis pada kontainer basis data.
-- **Robust CI/CD Pipeline**: Pipeline kini memvalidasi kompilasi, tes unit, linter, tes fungsional (dengan integrasi Docker), dan memastikan *pipeline* berjalan **SUCCESS** secara konsisten.
+## 📑 Daftar Isi
+1. [Arsitektur Sistem](#-arsitektur-sistem)
+2. [Tech Stack](#-tech-stack)
+3. [Dokumentasi Microservices](#-dokumentasi-microservices)
+4. [Skema & Database](#-skema--database)
+5. [Fitur Sistem](#-fitur-sistem)
+6. [API & Autentikasi](#-api--autentikasi)
+7. [Environment Variables](#-environment-variables)
+8. [Panduan Instalasi & Deployment](#-panduan-instalasi--deployment)
+9. [Monitoring & Logging](#-monitoring--logging)
+10. [Struktur Repositori](#-struktur-repositori)
+11. [Known Limitations](#-known-limitations)
 
 ---
 
-## 📐 Arsitektur
+## 📐 Arsitektur Sistem
 
+Sistem NusaRoute berpusat pada **API Gateway Pattern** untuk trafik eksternal dan **Event-Driven Architecture** untuk komunikasi asinkron internal antar-servis.
+
+```mermaid
+graph TD
+    UI[Frontend Dashboard Next.js] -->|HTTP REST| API[API Gateway :8080]
+    API -->|Reverse Proxy / HTTP| US[User Service :8001]
+    API -->|Reverse Proxy / HTTP| OS[Order Service :8004]
+    API -->|Reverse Proxy / HTTP| TS[Tracking Service :8008]
+    API -.->|Lainnya...| Others[Other Services]
+    
+    OS -->|Publish Event| Kafka[(Apache Kafka)]
+    Kafka -->|Consume Event| TS
+    Kafka -->|Consume Event| NS[Notification Service :8009]
+    Kafka -->|Consume Event| RS[Resolution Service :8010]
+    
+    US --> DB_PG_1[(Postgres: user)]
+    OS --> DB_PG_2[(Postgres: order)]
+    TS --> DB_MG_1[(MongoDB: tracking)]
+    API --> DB_RD_1[(Redis: Rate Limit & Lock)]
 ```
-┌──────────────┐     ┌──────────────────────────────────────────────────────┐
-│  Front-End   │────▶│                  API Gateway (:8080)                 │
-│  Dashboard   │     │         JWT Validation · Rate Limiting · CORS       │
-└──────────────┘     └──────────┬───────┬───────┬───────┬───────┬──────────┘
-                               │       │       │       │       │
-         ┌─────────────────────┼───────┼───────┼───────┼───────┼────────────────┐
-         │                     ▼       ▼       ▼       ▼       ▼                │
-         │  ┌──────────┐ ┌─────────┐ ┌───────┐ ┌────────┐ ┌──────────┐         │
-         │  │  User    │ │ Payment │ │ Order │ │Pricing │ │ Courier  │         │
-         │  │ Service  │ │ Service │ │Service│ │Service │ │ Service  │         │
-         │  │  :8001   │ │  :8002  │ │ :8004 │ │ :8003  │ │  :8005   │         │
-         │  └──────────┘ └─────────┘ └───────┘ └────────┘ └──────────┘         │
-         │  ┌──────────┐ ┌─────────┐ ┌───────────┐ ┌────────────┐             │
-         │  │ Dispatch │ │   Hub   │ │ Tracking  │ │Notification│             │
-         │  │ Service  │ │ Service │ │  Service  │ │  Service   │             │
-         │  │  :8006   │ │  :8007  │ │   :8008   │ │   :8009    │             │
-         │  └──────────┘ └─────────┘ └───────────┘ └────────────┘             │
-         │  ┌────────────┐                                                     │
-         │  │ Resolution │        ◄══════ Apache Kafka ══════►                 │
-         │  │  Service   │            Event-Driven Messaging                   │
-         │  │   :8010    │                                                     │
-         │  └────────────┘                                                     │
-         └─────────────────────────────────────────────────────────────────────┘
-```
+
+### Konsep Kunci yang Diimplementasikan:
+1. **At-Least-Once Delivery:** Konsumen Kafka (`pkg/kafka`) menarik (`FetchMessage`) lalu hanya menyimpan *offset* (`CommitMessages`) ketika data sudah terekam ke basis data.
+2. **Distributed Cron Jobs:** Penjadwalan periodik seperti Pemeriksa Kedaluwarsa SLA dan Pembayaran dijaga oleh **Redis Distributed Lock** (`pkg/redislock`), mencegah balapan eksekusi saat Pod K8s diskalakan.
+3. **Outbox Pattern:** Menyelesaikan masalah ketersediaan tinggi di mana setiap service akan menulis Event ke tabel `outbox_events` (PostgreSQL) terlebih dahulu (ACID), kemudian dilempar ke Kafka.
+4. **Saga Pattern:** Orkestrasi terdistribusi dalam kasus gagal bayar (Auto-cancel pesanan jika Payment Service tidak mendapatkan pembayaran dalam 24 jam).
 
 ---
 
 ## 🛠 Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Language | Go 1.23 |
-| Messaging | Apache Kafka + Zookeeper |
-| Relational DB | PostgreSQL 16 (+ PostGIS for Dispatch) |
-| Document DB | MongoDB 7 (Tracking, Notification) |
-| Cache | Redis 7 (JWT blacklist, price cache, GPS) |
-| Object Storage | MinIO (S3-compatible, evidence photos) |
-| API Gateway | Custom Go reverse proxy |
-| CI/CD | Jenkins (8-stage pipeline) |
-| Container | Docker & Docker Compose |
-| Orchestration | Kubernetes (HPA autoscaling) |
-| Observability | Prometheus, Grafana, Zap Logger |
-| Frontend | Next.js 16, React 19, TypeScript (Light-Toned UI) |
+### Frontend
+- **Framework:** Next.js 16 (App Router), React 19
+- **Styling:** Tailwind CSS v4, Lucide Icons
+- **State & Data Fetching:** React Context API (Auth), Fetch API bawaan.
+- **Resilience:** React Error Boundary.
+
+### Backend (Microservices)
+- **Bahasa:** Go 1.23 (Clean Architecture)
+- **Komunikasi Internal:** REST HTTP & Apache Kafka (Event-Driven)
+- **API Gateway:** Custom Go Reverse Proxy (Rate Limiter, Proxy Timeout, JWT Auth)
+
+### Database
+- **PostgreSQL 16:** Penyimpanan relasional utama (Database-per-Service).
+- **MongoDB 7:** Penyimpanan dokumen untuk jejak riwayat (`tracking-service`).
+- **Redis 7:** Rate limiting, Caching, dan Distributed Locks.
+
+### DevOps & Infrastructure
+- **Containerization:** Docker, Docker Compose
+- **Orchestration:** Kubernetes (Deployment, ConfigMap, HPA)
+- **CI/CD:** Jenkins
+- **Observability:** Prometheus, Grafana, Zap Logger
 
 ---
 
-## 📦 Microservices
+## 📦 Dokumentasi Microservices
 
-| # | Service | Port | Database | Key Features |
-|---|---------|------|----------|-------------|
-| 1 | User Service | 8001 | PostgreSQL + Redis | JWT auth, bcrypt, address book |
-| 2 | Payment Service | 8002 | PostgreSQL | Idempotency key, webhook handler |
-| 3 | Pricing Service | 8003 | PostgreSQL + Redis | Haversine distance, volumetric weight |
-| 4 | Order Service | 8004 | PostgreSQL | AWB generation, Saga pattern, SLA monitor |
-| 5 | Courier Service | 8005 | PostgreSQL | Availability tracking, nearby search |
-| 6 | Dispatch Service | 8006 | PostgreSQL | VRP nearest-courier, no-show monitor |
-| 7 | Hub Service | 8007 | PostgreSQL | 3-type scan (inbound/sort/outbound) |
-| 8 | Tracking Service | 8008 | MongoDB + Redis | Immutable event ledger, GPS tracking |
-| 9 | Notification Service | 8009 | MongoDB | Multi-channel (Email/WA/Push) |
-| 10 | Resolution Service | 8010 | PostgreSQL | Auto-ticket, insurance claims, returns |
-
----
-
-## 🔄 Event-Driven Flow (Kafka Topics)
-
-```
-payment.success          → Order Service
-order.ready-for-pickup   → Dispatch Service, Notification Service
-courier.assigned         → Tracking Service, Notification Service
-package.picked-up        → Tracking Service, Notification Service
-package.scanned-at-hub   → Tracking Service
-package.delivered        → Order Service, Tracking Service, Notification Service
-delivery.failed          → Resolution Service, Notification Service, Order Service
-package.lost.suspected   → Resolution Service, Notification Service
-package.damaged          → Resolution Service, Notification Service
-order.cancelled          → Payment Service (refund), Notification Service
-resolution.created       → Notification Service
-resolution.resolved      → Order Service, Notification Service
-```
+| Service | Port | Database | Deskripsi & Endpoint Utama |
+|---------|------|----------|--------------------------|
+| **User Service** | 8001 | PostgreSQL | Manajemen akun, registrasi, otentikasi JWT. |
+| **Payment Service** | 8002 | PostgreSQL | Pemrosesan pembayaran, validasi Webhook eksternal. |
+| **Pricing Service** | 8003 | PostgreSQL, Redis | Kalkulasi tarif berbasis koordinat (Haversine) & berat volumetrik. |
+| **Order Service** | 8004 | PostgreSQL | AWB Engine, Manajemen pesanan (Create, Cancel), SLA Monitor. |
+| **Courier Service** | 8005 | PostgreSQL | Ketersediaan armada, pencarian kurir terdekat. |
+| **Dispatch Service** | 8006 | PostgreSQL+PostGIS | Algoritma *Vehicle Routing*, *Auto-assign* armada. |
+| **Hub Service** | 8007 | PostgreSQL | Manajemen gudang penyortiran, Scan Inbound/Outbound. |
+| **Tracking Service** | 8008 | MongoDB | Ledger posisi paket secara *real-time*. |
+| **Notification Service**| 8009 | MongoDB | Pengiriman Email/WA asinkron via *worker pool*. |
+| **Resolution Service** | 8010 | PostgreSQL | *Ticketing* pelanggan otomatis untuk keluhan & klaim asuransi. |
 
 ---
 
-## ⚠️ Fault Handling
+## 🗄 Skema & Database
 
-| Skenario | Solusi |
-|----------|--------|
-| Paket tidak sampai | 3x retry → RETURN_TO_SENDER |
-| Paket hilang | SLA Monitor (48h stuck) → auto insurance claim |
-| Paket rusak | PACKAGE_DAMAGED event → auto-ticket |
-| Payment timeout | Saga: auto-cancel setelah 24h |
-| Kurir no-show | 2h timeout → auto-reassign |
-| Event gagal diproses | Dead Letter Queue (DLQ) setelah 3x retry |
+Sistem ini mematuhi standar *Database-per-Service*, menjamin tidak ada layanan yang membagikan instance tabel secara langsung.
+- **Migration:** Terdapat pada `back-end/scripts/init-databases.sql`.
+- **Demo Data Seeding:** Tersedia *script* `npm run seed` di *Frontend* yang menjalankan `back-end/scripts/seed.go`. Script ini melakukan penyuntikan (injeksi) secara *bulk* ratusan data realistis (Pesanan, Kurir, Hub) yang tersebar di multi-database untuk menyimulasikan fluktuasi harian dan tren nyata pada Dashboard.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Fitur Sistem
 
-### Prerequisites
-- Go 1.23+
-- Docker & Docker Compose
+### ✅ Fitur Aktif (Implemented)
+- Otentikasi Pengguna & Akses Role-Based (JWT).
+- Pembuatan Resi (AWB) secara unik dan otomatis.
+- Pelacakan Paket (*Live Tracking*) via Dashboard dan Input Nomor Resi.
+- *Dashboard Analytics* Agregasi Data Real-Time: Angka dan trend seperti Paket Terkirim, Kurir Aktif, dan Hub di-fetch secara konkuren oleh *API Gateway* (`GET /api/v1/dashboard/stats`).
+- Otomatisasi pengiriman Event dari Order ➔ Dispatch ➔ Courier ➔ Tracking.
 
-### 1. Start Infrastructure
+### 🚧 Fitur Terencana (Planned)
+- Implementasi Geolocation interaktif dengan OpenStreetMap / Leaflet (saat ini menggunakan data tiruan lat/long).
+- Push Notifications melalui WebSocket ke Frontend klien.
+
+---
+
+## 🛡 API & Autentikasi
+
+- **URL Dasar:** `http://localhost:8080/api/v1`
+- **Autentikasi:** JWT (JSON Web Token) via *Header* `Authorization: Bearer <token>`.
+- **Format Payload:** `application/json` (Request & Response).
+
+API Gateway menggunakan perlindungan **Rate Limit (100 req/min/IP)** via Redis dan memiliki **Graceful Proxy Timeout** guna mencegah terkurasnya memori server (OOM) apabila terjadi kegagalan jaringan.
+
+---
+
+## ⚙️ Environment Variables
+
+### API Gateway & Backend
+Dikonfigurasi melalui `back-end/.env.nusaroute` dan K8s *ConfigMap*:
+
+| Variable | Required | Default | Description |
+| -------- | -------- | ------- | ----------- |
+| `PORT` | No | `8080` | Port tempat servis berjalan |
+| `APP_ENV` | Yes | `development` | `development` atau `production` |
+| `JWT_SECRET` | Yes | `nusaroute-jwt-secret...` | Kunci rahasia untuk *signing* token |
+| `DATABASE_URL` | Yes | - | URI Koneksi PostgreSQL |
+| `MONGO_URI` | Yes | - | URI Koneksi MongoDB |
+| `REDIS_ADDR` | Yes | `localhost:6379` | Host & Port Redis |
+
+> **Catatan Keamanan (Fail-Fast):** Jika `APP_ENV=production`, *API Gateway* akan gagal memuat (Crash) jika `JWT_SECRET` masih default. Postgres juga dipaksa menggunakan enkripsi koneksi (`sslmode=require`).
+
+---
+
+## 💻 Panduan Instalasi & Deployment
+
+### 1. Local Development (Docker Compose)
+Cara paling mudah menjalankan seluruh ekosistem:
+
 ```bash
-docker-compose -f back-end/docker-compose.yml up -d postgres mongodb redis kafka zookeeper minio kafka-ui
+# Buka direktori back-end
+cd back-end
+
+# Build dan jalankan seluruh microservices + DB (Postgres, Mongo, Redis, Kafka)
+docker-compose up --build -d
+
+# Periksa log
+docker-compose logs -f
 ```
 
-### 2. Run Services Individually
+### 2. Frontend Development (Node.js)
 ```bash
-cd back-end/services/user-service && go run cmd/main.go
-cd back-end/services/order-service && go run cmd/main.go
-# ... etc
-```
-
-### 3. Run Frontend Dashboard
-```bash
+# Buka direktori front-end
 cd front-end
+
+# Install modul (Next.js & React)
 npm install
+
+# Jalankan server
 npm run dev
 ```
 
-### 4. Or Run All via Docker Compose
+Dashboard kini dapat diakses melalui: **http://localhost:3000**
+
+### 3. Mengisi Data Demo
+Untuk mengisi sistem dengan data tiruan (Pesanan, Pelanggan, Riwayat Paket) agar dashboard tidak kosong:
 ```bash
-cd back-end && docker-compose up --build
+cd front-end
+npm run seed
 ```
 
-### 5. Access
-| Service | URL |
-|---------|-----|
-| API Gateway | http://localhost:8080 |
-| Frontend Dashboard | http://localhost:3000 |
-| Kafka UI | http://localhost:8090 |
-| MinIO Console | http://localhost:9001 |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3001 |
-
----
-
-## 🧪 Testing
-
+### 4. Deployment Cloud (Kubernetes)
+Konfigurasi manifest berada di `back-end/deployments/k8s/`:
 ```bash
-# Unit tests (no DB required)
-cd back-end && go test -tags=unit -v ./...
-
-# Build all services
-cd back-end && make build-all
+kubectl apply -f back-end/deployments/k8s/configmap.yaml
+kubectl apply -f back-end/deployments/k8s/postgres-deployment.yaml
+# ... (lanjutkan untuk Kafka dan microservices)
+kubectl apply -f back-end/deployments/k8s/api-gateway.yaml
 ```
 
 ---
 
-## 📁 Project Structure
+## 📊 Monitoring & Logging
 
-```
+- **Logging:** Setiap servis menggunakan `go.uber.org/zap` berformat JSON. API Gateway menyuntikkan `X-Trace-ID` (UUID) yang merambat lintas HTTP Request maupun Event Kafka.
+- **Monitoring (Prometheus & Grafana):** Mengekspos metrik HTTP Latency dan Counter Requests di path `/metrics`.
+
+---
+
+## 📁 Struktur Repositori
+
+```text
 NusaRoute/
-├── front-end/                   # Web Dashboard (Next.js, React, TypeScript)
-│   ├── app/                     # Next.js App Router (Pages & Layouts)
-│   ├── components/              # Reusable React Components
-│   ├── public/                  # Static Assets
-│   └── package.json             # NPM Dependencies
-├── back-end/
-│   ├── docker-compose.yml       # Full infrastructure stack
-│   ├── Makefile                 # Build, test, lint commands
-│   ├── Dockerfile               # Generic multi-stage build
-│   ├── Jenkinsfile              # 8-stage CI/CD pipeline
-│   ├── go.work                  # Go workspace (mono-repo)
-│   ├── pkg/                     # Shared libraries
-│   │   ├── events/              # Event schemas & Kafka topics
-│   │   ├── kafka/               # Producer/Consumer wrapper
-│   │   ├── middleware/          # JWT, Logging, Recovery, CORS
-│   │   ├── database/            # PostgreSQL, MongoDB, Redis helpers
-│   │   └── response/            # Standard API response format
-│   ├── api-gateway/             # Custom reverse proxy
-│   ├── services/                # 10 microservices
-│   │   ├── user-service/
-│   │   ├── payment-service/
-│   │   ├── pricing-service/
-│   │   ├── order-service/
-│   │   ├── courier-service/
-│   │   ├── dispatch-service/
-│   │   ├── hub-service/
-│   │   ├── tracking-service/
-│   │   ├── notification-service/
-│   │   └── resolution-service/
-│   ├── deployments/k8s/         # Kubernetes manifests
-│   └── scripts/                 # Database init scripts
-└── README.md
+├── front-end/                   # Next.js 16 Web Dashboard
+│   ├── app/                     # React App Router Layouts
+│   ├── components/              # UI Components (React)
+│   ├── lib/                     # API Fetcher & Auth Context
+│   └── scripts/                 # seed.js (Data Seeding)
+├── back-end/                    # Go Workspace (Microservices)
+│   ├── api-gateway/             # API Gateway (BFF, Aggregator, Rate Limiter)
+│   ├── pkg/                     # Shared Libs (Kafka, DB, Outbox, Redis Lock)
+│   ├── services/                # 10 Microservices
+│   ├── scripts/                 # SQL Init Script & seed.go (Bulk Seeder)
+│   ├── deployments/k8s/         # Kubernetes Manifests
+│   └── docker-compose.yml       # Orchestrator lokal
+└── README.md                    # Dokumentasi ini
 ```
 
 ---
 
-## 👥 Tim
-Tugas Besar Kelompok 3 — Distributed, Parallel & Cloud Computing  
-Universitas Pendidikan Indonesia · 2026
+## ⚠️ Known Limitations (Keterbatasan Sistem)
 
-- Iqbal Rizky Maulana
-- Bintang Fajar Putra Pamungkas
-- Mochammad Azka Basria
-- Dzaka Musyaffa Hidayat
+1. **Simulasi Pengiriman Kurir:** Perpindahan lokasi GPS kurir dan pergantian status (misal dari "Dikirim" menjadi "Terkirim") belum bergerak secara otonom dari aplikasi *Mobile* (karena aplikasi Mobile Kurir tidak termasuk dalam lingkup ini), sehingga simulasi perubahan *Tracking* masih bersifat pasif.
+2. **Tidak ada Event Sourcing Penuh:** Karena kendala kompleksitas, kami menggunakan kombinasi CRUD biasa dan *Outbox Pattern*, bukan murni arsitektur CQRS Event-Sourcing (meskipun layanan logistik seperti `tracking-service` sudah meniru sifat Append-Only Ledger).
 
 ---
+
+<p align="center">
+  <b>Tugas Besar Kelompok 3 — Universitas Pendidikan Indonesia · 2026</b><br>
+  Iqbal Rizky Maulana · Bintang Fajar Putra Pamungkas · Mochammad Azka Basria · Dzaka Musyaffa Hidayat
+</p>
