@@ -8,6 +8,7 @@ CREATE DATABASE nusaroute_courier;
 CREATE DATABASE nusaroute_dispatch;
 CREATE DATABASE nusaroute_hub;
 CREATE DATABASE nusaroute_resolution;
+CREATE DATABASE nusaroute_datawarehouse;
 
 -- Enable PostGIS extension on dispatch database for spatial queries
 \c nusaroute_dispatch;
@@ -21,3 +22,9 @@ GRANT ALL PRIVILEGES ON DATABASE nusaroute_courier TO nusaroute;
 GRANT ALL PRIVILEGES ON DATABASE nusaroute_dispatch TO nusaroute;
 GRANT ALL PRIVILEGES ON DATABASE nusaroute_hub TO nusaroute;
 GRANT ALL PRIVILEGES ON DATABASE nusaroute_resolution TO nusaroute;
+GRANT ALL PRIVILEGES ON DATABASE nusaroute_datawarehouse TO nusaroute;
+
+-- Initialize Data Warehouse schema
+\c nusaroute_datawarehouse;
+\i /docker-entrypoint-initdb.d/init-datawarehouse.sql
+

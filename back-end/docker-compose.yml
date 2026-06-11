@@ -18,6 +18,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+      - ./scripts/init-datawarehouse.sql:/docker-entrypoint-initdb.d/init-datawarehouse.sql
     networks:
       - nusaroute-net
     healthcheck:
