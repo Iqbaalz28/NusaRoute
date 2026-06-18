@@ -21,6 +21,7 @@ spec:
       containers:
       - name: api-gateway
         image: nusaroute/api-gateway:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
         env:
@@ -31,6 +32,13 @@ spec:
             secretKeyRef:
               name: nusaroute-secrets
               key: jwt-secret
+        - name: REDIS_ADDR
+          value: "redis.nusaroute.svc.cluster.local:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nusaroute-secrets
+              key: redis-password
         - name: USER_SERVICE_URL
           value: "http://user-service.nusaroute.svc.cluster.local:8001"
         - name: PAYMENT_SERVICE_URL
@@ -105,6 +113,7 @@ spec:
       containers:
       - name: user-service
         image: nusaroute/user-service:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8001
         env:
@@ -133,6 +142,11 @@ spec:
               key: jwt-secret
         - name: REDIS_ADDR
           value: "redis.nusaroute.svc.cluster.local:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nusaroute-secrets
+              key: redis-password
         - name: KAFKA_BROKERS
           value: "kafka.nusaroute.svc.cluster.local:9092"
         resources:
@@ -144,14 +158,14 @@ spec:
             cpu: "500m"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/auth/health
             port: 8001
           initialDelaySeconds: 10
           periodSeconds: 15
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/auth/health
             port: 8001
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -190,6 +204,7 @@ spec:
       containers:
       - name: order-service
         image: nusaroute/order-service:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8004
         env:
@@ -213,6 +228,13 @@ spec:
           value: "nusaroute_order"
         - name: KAFKA_BROKERS
           value: "kafka.nusaroute.svc.cluster.local:9092"
+        - name: REDIS_ADDR
+          value: "redis.nusaroute.svc.cluster.local:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nusaroute-secrets
+              key: redis-password
         resources:
           requests:
             memory: "128Mi"
@@ -222,14 +244,14 @@ spec:
             cpu: "1000m"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/orders/health
             port: 8004
           initialDelaySeconds: 15
           periodSeconds: 15
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/orders/health
             port: 8004
           initialDelaySeconds: 10
           periodSeconds: 5
@@ -268,6 +290,7 @@ spec:
       containers:
       - name: tracking-service
         image: nusaroute/tracking-service:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8008
         env:
@@ -282,6 +305,11 @@ spec:
           value: "nusaroute_tracking"
         - name: REDIS_ADDR
           value: "redis.nusaroute.svc.cluster.local:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nusaroute-secrets
+              key: redis-password
         - name: KAFKA_BROKERS
           value: "kafka.nusaroute.svc.cluster.local:9092"
         resources:
@@ -293,14 +321,14 @@ spec:
             cpu: "1000m"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/tracking/health
             port: 8008
           initialDelaySeconds: 10
           periodSeconds: 15
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/tracking/health
             port: 8008
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -339,6 +367,7 @@ spec:
       containers:
       - name: dispatch-service
         image: nusaroute/dispatch-service:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8006
         env:
@@ -362,6 +391,13 @@ spec:
           value: "kafka.nusaroute.svc.cluster.local:9092"
         - name: COURIER_SERVICE_URL
           value: "http://courier-service.nusaroute.svc.cluster.local:8005"
+        - name: REDIS_ADDR
+          value: "redis.nusaroute.svc.cluster.local:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nusaroute-secrets
+              key: redis-password
         resources:
           requests:
             memory: "128Mi"
@@ -371,14 +407,14 @@ spec:
             cpu: "2000m"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/dispatch/health
             port: 8006
           initialDelaySeconds: 15
           periodSeconds: 15
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/dispatch/health
             port: 8006
           initialDelaySeconds: 10
           periodSeconds: 5
@@ -456,8 +492,8 @@ metadata:
   namespace: nusaroute
 type: Opaque
 stringData:
-  jwt-secret: "REPLACE_WITH_SECURE_JWT_SECRET"
+  jwt-secret: "nusaroute-jwt-secret-key-2026"
   db-user: "nusaroute"
-  db-password: "REPLACE_WITH_DB_PASSWORD"
-  redis-password: "REPLACE_WITH_REDIS_PASSWORD"
-  mongo-uri: "mongodb://nusaroute:REPLACE_WITH_MONGO_PASSWORD@mongodb:27017"
+  db-password: "nusaroute_secret"
+  redis-password: "nusaroute_secret"
+  mongo-uri: "mongodb://nusaroute:nusaroute_secret@mongodb:27017"

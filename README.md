@@ -270,13 +270,17 @@ Untuk kebutuhan analitik dan pelaporan agregat, dirancang **Star Schema** yang t
 
 ### Prinsip Desain Dimensi
 
-> **Mengapa User, Kurir, Transaksi, dan Merchant BUKAN Dimensi?**
+> **Mengapa User, Kurir/Driver, Transaksi, dan Merchant BUKAN Dimensi?**
 >
-> Karakteristik utama Data Warehouse adalah **agregat** — kita menganalisis pola dan tren, bukan data per-individu. Entitas seperti User, Kurir, dan Transaksi adalah data operasional (OLTP), bukan dimensi analitik.
+> Karakteristik utama Data Warehouse adalah **agregat** — kita menganalisis pola dan tren, bukan data per-individu. Entitas seperti User, Kurir/Driver, dan Transaksi adalah data operasional (OLTP), bukan dimensi analitik.
 >
 > Dimensi yang benar adalah **karakteristik kategorikal** yang bisa digunakan untuk *slicing* dan *dicing* data agregat: waktu, lokasi (Provinsi → Kab/Kota → Kecamatan → Kelurahan), tipe layanan, dsb.
 >
 > Alamat (string bebas) juga **bukan dimensi** — yang menjadi dimensi adalah hirarki geografis: Provinsi, Kabupaten/Kota, Kecamatan, Kelurahan.
+>
+> **Bagaimana dengan Driver?**
+>
+> Sama seperti entitas operasional lainnya, Driver/Kurir secara individual bukan merupakan dimensi. Namun, metrik agregat terkait Driver (seperti rata-rata pendapatan harian dan rating performa) tetap dapat dianalisis secara makro lintas dimensi waktu dan lokasi. Oleh karena itu, metrik ini dimasukkan langsung sebagai **Measure** di Fact Table (`avg_pendapatan_driver_per_hari` dan `avg_performa_driver`), tanpa memerlukan tabel dimensi driver individual. Penghitungan performa dan pendapatan driver ini bersumber dari database operasional (OLTP) saat proses ETL (Extract, Transform, Load) dijalankan ke Data Warehouse.
 
 ### Diagram Star Schema
 
@@ -310,6 +314,8 @@ erDiagram
         decimal total_biaya "SUM"
         decimal durasi_pengiriman_jam "AVG"
         int jumlah_percobaan "AVG | SUM"
+        decimal avg_pendapatan_driver_per_hari "AVG"
+        decimal avg_performa_driver "AVG"
     }
 
     dim_waktu {
@@ -387,6 +393,8 @@ erDiagram
 | `total_biaya` | DECIMAL(15,2) | **SUM** | Biaya keseluruhan (ongkir + asuransi) |
 | `durasi_pengiriman_jam` | DECIMAL(10,2) | **AVG** | Rata-rata waktu dari pickup → delivered |
 | `jumlah_percobaan` | INT | **AVG** / **SUM** | Percobaan pengiriman per paket |
+| `avg_pendapatan_driver_per_hari` | DECIMAL(15,2) | **AVG** | Rata-rata pendapatan harian driver untuk dimensi terkait (dihitung di operasional) |
+| `avg_performa_driver` | DECIMAL(3,2) | **AVG** | Rata-rata rating performa driver (skala 1-5) untuk dimensi terkait (dihitung di operasional) |
 
 ### Definisi Dimension Tables
 
@@ -498,6 +506,19 @@ JOIN dim_lokasi dl            ON f.asal_lokasi_key = dl.lokasi_key
 JOIN dim_status_pengiriman ds ON f.status_key = ds.status_key
 WHERE ds.is_final = true
 GROUP BY dl.kabupaten_kota, ds.kategori_status;
+
+-- Query 4: Rata-rata pendapatan driver per hari dan rata-rata performa driver per provinsi per bulan (Contoh: Jawa Barat pada bulan Januari 2026)
+SELECT
+    dl.provinsi,
+    dw.nama_bulan,
+    dw.tahun,
+    AVG(f.avg_pendapatan_driver_per_hari) AS rata_rata_pendapatan_driver,
+    AVG(f.avg_performa_driver)            AS rata_rata_performa_driver
+FROM fact_pengiriman f
+JOIN dim_lokasi dl     ON f.tujuan_lokasi_key = dl.lokasi_key
+JOIN dim_waktu dw      ON f.tanggal_key = dw.tanggal_key
+WHERE dl.provinsi = 'Jawa Barat' AND dw.nama_bulan = 'Januari' AND dw.tahun = 2026
+GROUP BY dl.provinsi, dw.nama_bulan, dw.tahun;
 ```
 
 ---
@@ -584,12 +605,26 @@ npm run seed
 
 ### 4. Deployment Cloud (Kubernetes)
 Konfigurasi manifest berada di `back-end/deployments/k8s/`:
+
+**Cara 1: Menerapkan seluruh folder sekaligus**
+Kubectl mendukung penerapan seluruh file manifest dalam suatu direktori secara otomatis:
 ```bash
-kubectl apply -f back-end/deployments/k8s/configmap.yaml
-kubectl apply -f back-end/deployments/k8s/postgres-deployment.yaml
-# ... (lanjutkan untuk Kafka dan microservices)
-kubectl apply -f back-end/deployments/k8s/api-gateway.yaml
+kubectl apply -f back-end/deployments/k8s/
 ```
+
+**Cara 2: Menggunakan Script Otomatis (Direkomendasikan)**
+Kami telah menyediakan script otomatis untuk memastikan pembuatan namespace selesai terlebih dahulu sebelum resource lainnya diterapkan:
+
+- **Linux / macOS / Git Bash:**
+  ```bash
+  chmod +x back-end/deployments/k8s/deploy.sh
+  ./back-end/deployments/k8s/deploy.sh
+  ```
+- **Windows PowerShell:**
+  ```powershell
+  .\back-end\deployments\k8s\deploy.ps1
+  ```
+
 
 ---
 
