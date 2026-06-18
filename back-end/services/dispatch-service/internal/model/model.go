@@ -30,3 +30,18 @@ type ManualAssignRequest struct {
 	OrderID   string `json:"order_id"`
 	CourierID string `json:"courier_id"`
 }
+
+// PickupRequest is sent by a courier (driver) when they pick up a package from the sender.
+type PickupRequest struct {
+	OrderID string  `json:"order_id"`
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+}
+
+// DeliverRequest is sent by a courier (driver) when they complete delivery to the receiver.
+type DeliverRequest struct {
+	OrderID      string  `json:"order_id"`
+	ReceiverName string  `json:"receiver_name"`
+	Lat          float64 `json:"lat"`
+	Lng          float64 `json:"lng"`
+}

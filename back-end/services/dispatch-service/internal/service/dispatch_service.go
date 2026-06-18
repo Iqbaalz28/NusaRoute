@@ -21,6 +21,8 @@ import (
 type DispatchService interface {
 	AutoAssign(ctx context.Context, orderID, awb string, pickupLat, pickupLng float64, pickupAddr string) error
 	ManualAssign(ctx context.Context, req model.ManualAssignRequest) error
+	PickupPackage(ctx context.Context, req model.PickupRequest) error
+	DeliverPackage(ctx context.Context, req model.DeliverRequest) error
 	ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error)
 	RunNoShowMonitor(ctx context.Context)
 }
@@ -95,6 +97,59 @@ func (s *dispatchService) ManualAssign(ctx context.Context, req model.ManualAssi
 		OrderID: req.OrderID, CourierID: req.CourierID,
 	}
 	return s.repo.CreateAssignment(ctx, assignment, "", nil)
+}
+
+// PickupPackage marks the courier's assignment as picked up and publishes
+// package.picked-up so the tracking timeline records the PICKED_UP stage.
+func (s *dispatchService) PickupPackage(ctx context.Context, req model.PickupRequest) error {
+	a, err := s.repo.GetByOrderID(ctx, req.OrderID)
+	if err != nil {
+		return fmt.Errorf("no assignment found for order %s (courier not assigned yet): %w", req.OrderID, err)
+	}
+
+	lat, lng := req.Lat, req.Lng
+	if lat == 0 && lng == 0 {
+		lat, lng = a.PickupLat, a.PickupLng
+	}
+
+	event := events.PackagePickedUpEvent{
+		BaseEvent: events.BaseEvent{
+			EventID: uuid.New().String(), EventType: events.TopicPackagePickedUp,
+			Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
+		OrderID: a.OrderID, AWB: a.AWB, CourierID: a.CourierID,
+		PickedAt: time.Now(), Lat: lat, Lng: lng,
+	}
+
+	if err := s.repo.MarkPickedUp(ctx, a.ID, events.TopicPackagePickedUp, event); err != nil {
+		return fmt.Errorf("failed to mark picked up: %w", err)
+	}
+
+	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] 📦 Courier %s picked up order %s (AWB=%s)", a.CourierName, a.OrderID, a.AWB))
+	return nil
+}
+
+// DeliverPackage marks the assignment complete and publishes package.delivered
+// so tracking records DELIVERED and the order is finalized.
+func (s *dispatchService) DeliverPackage(ctx context.Context, req model.DeliverRequest) error {
+	a, err := s.repo.GetByOrderID(ctx, req.OrderID)
+	if err != nil {
+		return fmt.Errorf("no assignment found for order %s: %w", req.OrderID, err)
+	}
+
+	event := events.PackageDeliveredEvent{
+		BaseEvent: events.BaseEvent{
+			EventID: uuid.New().String(), EventType: events.TopicPackageDelivered,
+			Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
+		OrderID: a.OrderID, AWB: a.AWB, CourierID: a.CourierID,
+		ReceiverName: req.ReceiverName, Lat: req.Lat, Lng: req.Lng, GeofenceValid: true,
+	}
+
+	if err := s.repo.MarkCompleted(ctx, a.ID, events.TopicPackageDelivered, event); err != nil {
+		return fmt.Errorf("failed to mark delivered: %w", err)
+	}
+
+	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ✅ Courier %s delivered order %s (AWB=%s) to %s", a.CourierName, a.OrderID, a.AWB, req.ReceiverName))
+	return nil
 }
 
 func (s *dispatchService) ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error) {

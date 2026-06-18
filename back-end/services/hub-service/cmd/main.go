@@ -18,6 +18,7 @@ import (
 	"github.com/nusaroute/pkg/database"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/middleware"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/pkg/response"
 	"github.com/nusaroute/services/hub-service/internal/model"
 	"github.com/nusaroute/services/hub-service/internal/repository"
@@ -50,6 +51,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var wg sync.WaitGroup
+
+	// Outbox Worker — drains hub scan events (package.scanned-at-hub) to Kafka
+	outbox.NewWorker(db, producer, 2*time.Second).Start(ctx)
 
 	// Start Stateful Stream Processor (Tumbling Window)
 	windowSize := 60 * time.Second // 1 minute tumbling window

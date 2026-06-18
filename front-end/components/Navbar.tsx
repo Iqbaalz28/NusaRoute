@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useAuth } from "@/lib/AuthContext";
 
 interface NavbarProps {
   activePage: string;
@@ -9,8 +10,11 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activePage, setActivePage, onLoginClick }) => {
+  const { isAuthenticated, user, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const displayName = user?.full_name || user?.email || "Akun";
 
   useEffect(() => {
     const handleScroll = () => {
@@ -25,7 +29,9 @@ export const Navbar: React.FC<NavbarProps> = ({ activePage, setActivePage, onLog
     { id: "tracking", label: "Lacak" },
     { id: "orders", label: "Pesanan" },
     { id: "services", label: "Layanan" },
+    { id: "courier", label: "Kurir" },
     { id: "hubs", label: "Hub" },
+    { id: "admin", label: "Admin" },
   ];
 
   return (
@@ -52,9 +58,26 @@ export const Navbar: React.FC<NavbarProps> = ({ activePage, setActivePage, onLog
               {link.label}
             </button>
           ))}
-          <button className="bg-primary text-white font-heading font-semibold px-6 py-3 rounded-pill hover:bg-primary-hover hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(255,107,74,0.2)] transition-all duration-300 whitespace-nowrap" onClick={onLoginClick}>
-            Masuk
-          </button>
+          {isAuthenticated ? (
+            <div className="flex items-center gap-3 max-md:flex-col max-md:items-stretch">
+              <span className="flex items-center gap-2 font-body text-[0.9rem] font-semibold text-text whitespace-nowrap">
+                <span className="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center font-heading font-bold uppercase">
+                  {displayName.charAt(0)}
+                </span>
+                {displayName}
+              </span>
+              <button
+                className="bg-primary/10 text-primary font-heading font-semibold px-6 py-3 rounded-pill hover:bg-primary/20 transition-all duration-300 whitespace-nowrap"
+                onClick={() => { logout(); setIsMenuOpen(false); }}
+              >
+                Keluar
+              </button>
+            </div>
+          ) : (
+            <button className="bg-primary text-white font-heading font-semibold px-6 py-3 rounded-pill hover:bg-primary-hover hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(255,107,74,0.2)] transition-all duration-300 whitespace-nowrap" onClick={onLoginClick}>
+              Masuk
+            </button>
+          )}
         </div>
 
         <div className="flex items-center">

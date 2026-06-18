@@ -12,6 +12,7 @@ import (
 	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/logger"
+	"github.com/nusaroute/pkg/routing"
 	"github.com/nusaroute/services/order-service/internal/model"
 	"github.com/nusaroute/services/order-service/internal/repository"
 	"github.com/redis/go-redis/v9"
@@ -22,6 +23,8 @@ type OrderService interface {
 	GetOrder(ctx context.Context, id string) (*model.Order, error)
 	ListOrders(ctx context.Context, userID string, page, perPage int) ([]model.Order, int64, error)
 	CancelOrder(ctx context.Context, orderID, userID string) error
+	ListAllOrders(ctx context.Context, page, perPage int, search string) ([]model.Order, int64, error)
+	AdminUpdateStatus(ctx context.Context, orderID, status string) error
 	HandlePaymentSuccess(ctx context.Context, orderID string) error
 	HandleDeliveryFailed(ctx context.Context, orderID string, attempts int) error
 	HandlePackageDelivered(ctx context.Context, orderID string) error
@@ -55,8 +58,12 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req model
 		return nil, errors.New("sender and receiver info required")
 	}
 
+	// Decide routing: same-city + instant service is delivered directly by the
+	// pickup courier; everything else is routed through a sortation hub.
+	deliveryMode := routing.DecideRouteByCoords(req.ServiceType, req.SenderLat, req.SenderLng, req.ReceiverLat, req.ReceiverLng)
+
 	order := &model.Order{
-		UserID: userID, ServiceType: req.ServiceType,
+		UserID: userID, ServiceType: req.ServiceType, DeliveryMode: deliveryMode,
 		SenderName: req.SenderName, SenderPhone: req.SenderPhone,
 		SenderAddress: req.SenderAddress, SenderLat: req.SenderLat, SenderLng: req.SenderLng,
 		ReceiverName: req.ReceiverName, ReceiverPhone: req.ReceiverPhone,
@@ -113,6 +120,55 @@ func (s *orderService) CancelOrder(ctx context.Context, orderID, userID string) 
 	}
 
 	return nil
+}
+
+// ListAllOrders returns all orders (admin view) with optional search.
+func (s *orderService) ListAllOrders(ctx context.Context, page, perPage int, search string) ([]model.Order, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
+	return s.repo.ListAll(ctx, page, perPage, search)
+}
+
+// AdminUpdateStatus lets an admin override an order's status directly.
+func (s *orderService) AdminUpdateStatus(ctx context.Context, orderID, status string) error {
+	valid := map[string]bool{
+		events.OrderStatusPendingPayment: true, events.OrderStatusReadyForPickup: true,
+		events.OrderStatusPickedUp: true, events.OrderStatusInTransit: true,
+		events.OrderStatusOutForDelivery: true, events.OrderStatusDelivered: true,
+		events.OrderStatusDeliveryFailed: true, events.OrderStatusReturnToSender: true,
+		events.OrderStatusCancelled: true, events.OrderStatusLostSuspected: true,
+	}
+	if !valid[status] {
+		return fmt.Errorf("invalid status: %s", status)
+	}
+
+	// Setting an order READY_FOR_PICKUP must emit the same event the payment flow
+	// does, otherwise dispatch-service never hears about it and no courier is
+	// auto-assigned. Mirror HandlePaymentSuccess so the admin path is complete.
+	if status == events.OrderStatusReadyForPickup {
+		order, err := s.repo.GetByID(ctx, orderID)
+		if err != nil {
+			return err
+		}
+
+		event := events.OrderReadyForPickupEvent{
+			BaseEvent: events.BaseEvent{
+				EventID: uuid.New().String(), EventType: events.TopicOrderReadyForPickup,
+				Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
+			OrderID: orderID, AWB: order.AWB, SenderID: order.UserID,
+			PickupLat: order.SenderLat, PickupLng: order.SenderLng, PickupAddr: order.SenderAddress,
+			ReceiverAddr: order.ReceiverAddress, ReceiverLat: order.ReceiverLat, ReceiverLng: order.ReceiverLng,
+			Weight: order.WeightKg, ServiceType: order.ServiceType,
+		}
+
+		return s.repo.UpdateStatus(ctx, orderID, status, "Admin marked ready for pickup", "admin", events.TopicOrderReadyForPickup, event)
+	}
+
+	return s.repo.UpdateStatus(ctx, orderID, status, "Admin manual update", "admin", "", nil)
 }
 
 func (s *orderService) HandlePaymentSuccess(ctx context.Context, orderID string) error {

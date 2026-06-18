@@ -7,7 +7,9 @@ import { DashboardPage } from "../components/dashboard/DashboardPage";
 import { TrackingPage } from "../components/TrackingPage";
 import { OrdersPage } from "../components/OrdersPage";
 import { ServicesPage } from "../components/ServicesPage";
+import { CourierPage } from "../components/CourierPage";
 import { HubsPage } from "../components/HubsPage";
+import { AdminPage } from "../components/AdminPage";
 import { LoginModal } from "../components/LoginModal";
 
 export default function Home() {
@@ -36,8 +38,12 @@ export default function Home() {
         return <OrdersPage />;
       case "services":
         return <ServicesPage />;
+      case "courier":
+        return <CourierPage />;
       case "hubs":
         return <HubsPage />;
+      case "admin":
+        return <AdminPage />;
       default:
         return (
           <DashboardPage

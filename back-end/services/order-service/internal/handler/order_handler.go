@@ -23,6 +23,8 @@ func NewOrderHandler(svc service.OrderService) *OrderHandler {
 func (h *OrderHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/orders", h.CreateOrder)
 	mux.HandleFunc("GET /api/v1/orders", h.ListOrders)
+	mux.HandleFunc("GET /api/v1/orders/all", h.ListAllOrders)
+	mux.HandleFunc("PUT /api/v1/orders/status", h.UpdateStatus)
 	mux.HandleFunc("GET /api/v1/orders/stats", h.GetDashboardStats)
 	mux.HandleFunc("GET /api/v1/orders/volume", h.GetVolumeStats)
 	mux.HandleFunc("GET /api/v1/orders/", h.GetOrder)
@@ -83,6 +85,36 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error()); return
 	}
 	response.Success(w, "order cancelled", nil)
+}
+
+func (h *OrderHandler) ListAllOrders(w http.ResponseWriter, r *http.Request) {
+	if middleware.GetUserID(r.Context()) == "" { response.Unauthorized(w, "not authenticated"); return }
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	if page < 1 { page = 1 }
+	if perPage < 1 { perPage = 20 }
+	search := r.URL.Query().Get("search")
+
+	orders, total, err := h.svc.ListAllOrders(r.Context(), page, perPage, search)
+	if err != nil { response.InternalError(w, err.Error()); return }
+	response.Paginated(w, orders, page, perPage, total)
+}
+
+func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	if middleware.GetUserID(r.Context()) == "" { response.Unauthorized(w, "not authenticated"); return }
+
+	var req struct {
+		OrderID string `json:"order_id"`
+		Status  string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil { response.BadRequest(w, "invalid request body"); return }
+	if req.OrderID == "" || req.Status == "" { response.BadRequest(w, "order_id and status are required"); return }
+
+	if err := h.svc.AdminUpdateStatus(r.Context(), req.OrderID, req.Status); err != nil {
+		response.BadRequest(w, err.Error()); return
+	}
+	response.Success(w, "order status updated", map[string]string{"order_id": req.OrderID, "status": req.Status})
 }
 
 func (h *OrderHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {

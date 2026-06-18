@@ -16,7 +16,7 @@ metadata:
   namespace: nusaroute
 subsets:
 - addresses:
-  - ip: 192.168.49.1
+  - ip: 192.168.65.254
   ports:
   - name: db
     port: 5433
@@ -39,7 +39,7 @@ metadata:
   namespace: nusaroute
 subsets:
 - addresses:
-  - ip: 192.168.49.1
+  - ip: 192.168.65.254
   ports:
   - name: redis
     port: 6379
@@ -62,7 +62,7 @@ metadata:
   namespace: nusaroute
 subsets:
 - addresses:
-  - ip: 192.168.49.1
+  - ip: 192.168.65.254
   ports:
   - name: mongodb
     port: 27017
@@ -88,7 +88,7 @@ metadata:
   namespace: nusaroute
 subsets:
 - addresses:
-  - ip: 192.168.49.1
+  - ip: 192.168.65.254
   ports:
   - name: kafka-9092
     port: 29092
@@ -113,7 +113,7 @@ metadata:
   namespace: nusaroute
 subsets:
 - addresses:
-  - ip: 192.168.49.1
+  - ip: 192.168.65.254
   ports:
   - name: minio
     port: 9000

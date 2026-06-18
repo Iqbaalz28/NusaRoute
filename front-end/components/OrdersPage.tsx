@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { apiGet } from "@/lib/api";
 import { Order } from "@/lib/types";
 
@@ -17,6 +18,7 @@ export const OrdersPage = () => {
   const [filter, setFilter] = useState("SEMUA");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<{ awb: string; id: string; statusLabel: string } | null>(null);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -39,6 +41,7 @@ export const OrdersPage = () => {
   const mappedOrders = orders.map(o => {
     return {
       id: o.id.substring(0, 12).toUpperCase(),
+      awb: o.awb,
       date: new Date(o.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
       destination: o.receiver_address?.split(',')[0] || "Unknown", // Simplified destination
       service: o.service_type === 'EXPRESS' ? '⚡ Ekspres' : o.service_type === 'CARGO' ? '📦 Kargo' : '🚚 Standar',
@@ -116,7 +119,12 @@ export const OrdersPage = () => {
                       </span>
                     </td>
                     <td className="p-6">
-                      <button className="text-primary font-bold text-[0.85rem] hover:underline">Detail</button>
+                      <button
+                        className="text-primary font-bold text-[0.85rem] hover:underline"
+                        onClick={() => setSelected({ awb: o.awb, id: o.id, statusLabel: o.statusLabel })}
+                      >
+                        Label QR
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -125,6 +133,23 @@ export const OrdersPage = () => {
           </div>
         )}
       </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-text/40 backdrop-blur-md" onClick={() => setSelected(null)}></div>
+          <div className="bg-surface w-full max-w-[400px] rounded-[32px] p-10 relative z-10 shadow-hover animate-fade-up text-center">
+            <button onClick={() => setSelected(null)} className="absolute top-6 right-7 text-muted hover:text-text text-2xl leading-none">×</button>
+            <h2 className="text-xl font-bold mb-1">Label Pengiriman</h2>
+            <p className="text-muted text-[0.85rem] mb-6">Scan QR ini di Konsol Scan Hub.</p>
+            <div className="bg-white p-4 rounded-2xl inline-block border border-border mb-5">
+              <QRCodeSVG value={selected.awb} size={180} level="M" />
+            </div>
+            <div className="text-[0.8rem] text-muted font-medium">Nomor Resi (AWB)</div>
+            <div className="text-xl font-black tracking-wide text-primary">{selected.awb}</div>
+            <div className="text-[0.85rem] text-muted mt-2">Status: <strong>{selected.statusLabel}</strong></div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

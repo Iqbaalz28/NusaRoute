@@ -101,6 +101,20 @@ export interface Order {
   updated_at: string;
 }
 
+export interface Assignment {
+  id: string;
+  order_id: string;
+  awb: string;
+  courier_id: string;
+  courier_name: string;
+  status: string; // ASSIGNED, PICKED_UP, COMPLETED, NO_SHOW, REASSIGNED
+  pickup_address: string;
+  assigned_at: string;
+  picked_up_at?: string;
+  completed_at?: string;
+  created_at: string;
+}
+
 export interface DashboardStats {
   total_orders_today: number;
   active_couriers: number;
@@ -117,8 +131,10 @@ export interface VolumeDataPoint {
 export interface AuthUser {
   id: string;
   email: string;
-  first_name: string;
-  last_name: string;
+  full_name?: string;
+  phone?: string;
+  first_name?: string;
+  last_name?: string;
   role: string;
 }
 

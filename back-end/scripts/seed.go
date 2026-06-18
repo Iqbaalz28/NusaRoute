@@ -97,31 +97,32 @@ func seedOrders(db *sqlx.DB) {
 		weight := 1.0 + rand.Float64()*5.0
 		_, err := db.Exec(`
 			INSERT INTO orders (
-				id, awb, user_id, status, service_type, 
-				sender_name, sender_phone, sender_address, 
-				receiver_name, receiver_phone, receiver_address, 
+				id, awb, user_id, status, service_type,
+				sender_name, sender_phone, sender_address,
+				receiver_name, receiver_phone, receiver_address,
 				shipping_cost, total_cost, weight_kg,
-				created_at, updated_at
+				created_at, updated_at, item_description
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 			ON CONFLICT (id) DO NOTHING
-		`, 
-			uuid.New().String(), 
-			fmt.Sprintf("NR%08d", rand.Intn(100000000)), 
-			uuid.New().String(), 
-			status, 
-			"REGULAR", 
-			"Sender "+fmt.Sprint(i), 
+		`,
+			uuid.New().String(),
+			fmt.Sprintf("NR%08d", rand.Intn(100000000)),
+			uuid.New().String(),
+			status,
+			"REGULAR",
+			"Sender "+fmt.Sprint(i),
 			"08123456789",
 			"Jl. Sender Address "+fmt.Sprint(i),
-			"Receiver "+fmt.Sprint(i), 
+			"Receiver "+fmt.Sprint(i),
 			"08987654321",
 			"Jl. Receiver Address "+fmt.Sprint(i),
-			cost, 
+			cost,
 			cost,
 			weight,
-			createdAt, 
 			createdAt,
+			createdAt,
+			"Barang Kiriman",
 		)
 		if err != nil {
 			log.Printf("Error seeding order: %v", err)

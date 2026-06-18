@@ -19,7 +19,9 @@ import (
 	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/middleware"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/pkg/response"
+	"github.com/nusaroute/services/dispatch-service/internal/model"
 	"github.com/nusaroute/services/courier-service/pkg/grpc/pb"
 	"github.com/nusaroute/services/dispatch-service/internal/repository"
 	"github.com/nusaroute/services/dispatch-service/internal/service"
@@ -71,6 +73,9 @@ func main() {
 	defer cancel()
 	var wg sync.WaitGroup
 
+	// Outbox Worker — drains assignment/courier lifecycle events to Kafka
+	outbox.NewWorker(db, producer, 2*time.Second).Start(ctx)
+
 	// Background: monitor courier no-shows
 	wg.Add(1)
 	go func() {
@@ -101,6 +106,38 @@ func main() {
 			return
 		}
 		response.Success(w, "assignments retrieved", assignments)
+	})
+	mux.HandleFunc("POST /api/v1/dispatch/pickup", func(w http.ResponseWriter, r *http.Request) {
+		var req model.PickupRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		if req.OrderID == "" {
+			response.BadRequest(w, "order_id is required")
+			return
+		}
+		if err := dispatchSvc.PickupPackage(r.Context(), req); err != nil {
+			response.BadRequest(w, err.Error())
+			return
+		}
+		response.Success(w, "package picked up", map[string]string{"order_id": req.OrderID, "status": "PICKED_UP"})
+	})
+	mux.HandleFunc("POST /api/v1/dispatch/deliver", func(w http.ResponseWriter, r *http.Request) {
+		var req model.DeliverRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		if req.OrderID == "" {
+			response.BadRequest(w, "order_id is required")
+			return
+		}
+		if err := dispatchSvc.DeliverPackage(r.Context(), req); err != nil {
+			response.BadRequest(w, err.Error())
+			return
+		}
+		response.Success(w, "package delivered", map[string]string{"order_id": req.OrderID, "status": "DELIVERED"})
 	})
 	mux.HandleFunc("GET /api/v1/dispatch/health", func(w http.ResponseWriter, r *http.Request) {
 		response.Success(w, "dispatch-service is healthy", map[string]string{"status": "UP"})

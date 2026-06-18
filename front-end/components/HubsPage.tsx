@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { Hub } from "@/lib/types";
+import { HubScanConsole } from "./HubScanConsole";
 
 export const HubsPage = () => {
   const [hubs, setHubs] = useState<Hub[]>([]);
@@ -26,12 +27,14 @@ export const HubsPage = () => {
 
   return (
     <section className="animate-fade-up pt-32 px-8 pb-24 max-w-[1200px] mx-auto min-h-screen">
-      <div className="mb-16">
+      <div className="mb-10">
         <h1 className="text-[3rem] font-bold mb-4">Jaringan Hub Kami</h1>
         <p className="text-muted text-lg max-w-[600px]">
           NusaRoute memiliki pusat penyortiran strategis untuk memastikan paket Anda sampai lebih cepat.
         </p>
       </div>
+
+      <HubScanConsole />
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -19,6 +19,7 @@ import (
 	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/middleware"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/services/order-service/internal/handler"
 	"github.com/nusaroute/services/order-service/internal/repository"
 	"github.com/nusaroute/services/order-service/internal/service"
@@ -60,6 +61,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var wg sync.WaitGroup
+
+	// Outbox Worker — drains order lifecycle events (e.g. order.ready-for-pickup) to Kafka
+	outbox.NewWorker(db, producer, 2*time.Second).Start(ctx)
 
 	// SLA Monitor: detect stuck packages (48h no update → LOST_SUSPECTED)
 	wg.Add(1)

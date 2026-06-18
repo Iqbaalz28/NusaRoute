@@ -16,6 +16,8 @@ type DispatchRepository interface {
 	GetActiveByOrderID(ctx context.Context, orderID string) (*model.Assignment, error)
 	ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error)
 	UpdateStatus(ctx context.Context, id, status string, outboxTopic string, outboxPayload interface{}) error
+	MarkPickedUp(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error
+	MarkCompleted(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error
 	GetNoShowAssignments(ctx context.Context, olderThan time.Duration) ([]model.Assignment, error)
 }
 
@@ -91,6 +93,54 @@ func (r *dispatchRepo) UpdateStatus(ctx context.Context, id, status string, outb
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx, "UPDATE assignments SET status = $1 WHERE id = $2", status, id)
+	if err != nil {
+		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *dispatchRepo) MarkPickedUp(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := time.Now()
+	_, err = tx.ExecContext(ctx,
+		"UPDATE assignments SET status = $1, picked_up_at = $2 WHERE id = $3",
+		model.AssignmentStatusPickedUp, now, id)
+	if err != nil {
+		return err
+	}
+
+	if outboxTopic != "" {
+		if err := outbox.InsertEvent(ctx, tx, outboxTopic, outboxPayload); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *dispatchRepo) MarkCompleted(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := time.Now()
+	_, err = tx.ExecContext(ctx,
+		"UPDATE assignments SET status = $1, completed_at = $2 WHERE id = $3",
+		model.AssignmentStatusCompleted, now, id)
 	if err != nil {
 		return err
 	}

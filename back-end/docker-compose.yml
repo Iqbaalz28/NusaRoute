@@ -314,6 +314,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - KAFKA_BROKERS=kafka:29092
       - COURIER_SERVICE_URL=http://courier-service:8005
+      - COURIER_GRPC_TARGET=courier-service:9005
     depends_on:
       postgres:
         condition: service_healthy

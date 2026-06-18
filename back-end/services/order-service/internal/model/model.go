@@ -9,7 +9,8 @@ type Order struct {
 	UserID         string    `json:"user_id" db:"user_id"`
 	Status         string    `json:"status" db:"status"`
 	ServiceType    string    `json:"service_type" db:"service_type"` // REG, YES, CARGO, SAME
-	
+	DeliveryMode   string    `json:"delivery_mode" db:"delivery_mode"` // DIRECT (same-city instant) or VIA_HUB
+
 	// Sender info
 	SenderName     string    `json:"sender_name" db:"sender_name"`
 	SenderPhone    string    `json:"sender_phone" db:"sender_phone"`
