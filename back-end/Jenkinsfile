@@ -8,7 +8,7 @@ pipeline {
     
     environment {
         REGISTRY = 'nusaroute'
-        GO_VERSION = '1.23'
+        GO_VERSION = '1.25'
         KUBECONFIG = credentials('kubeconfig')
     }
     
