@@ -175,12 +175,6 @@ pipeline {
         // Stage 6: Push Images
         // ========================================
         stage('Push Images') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'joko'
-                }
-            }
             steps {
                 script {
                     docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
@@ -204,12 +198,6 @@ pipeline {
         // Stage 7: Update Helm Values (GitOps)
         // ========================================
         stage('Update GitOps Repo') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'joko'
-                }
-            }
             steps {
                 dir('back-end') {
                     sh """
