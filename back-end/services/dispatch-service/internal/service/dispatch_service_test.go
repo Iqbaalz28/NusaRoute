@@ -4,9 +4,6 @@ package service_test
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -28,6 +25,54 @@ func (m *MockDispatchRepository) CreateAssignment(ctx context.Context, a *model.
 	return nil
 }
 
+func (m *MockDispatchRepository) CreateOpenJob(ctx context.Context, a *model.Assignment) error {
+	a.ID = "job-" + a.OrderID
+	a.Status = model.AssignmentStatusOpen
+	m.assignments[a.ID] = a
+	return nil
+}
+
+func (m *MockDispatchRepository) ExistsLeg(ctx context.Context, orderID, leg string) (bool, error) {
+	for _, a := range m.assignments {
+		if a.OrderID == orderID && a.Leg == leg {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *MockDispatchRepository) ListOpenJobs(ctx context.Context) ([]model.Assignment, error) {
+	var result []model.Assignment
+	for _, a := range m.assignments {
+		if a.Status == model.AssignmentStatusOpen {
+			result = append(result, *a)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockDispatchRepository) ListByCourier(ctx context.Context, courierID string) ([]model.Assignment, error) {
+	var result []model.Assignment
+	for _, a := range m.assignments {
+		if a.CourierID == courierID {
+			result = append(result, *a)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockDispatchRepository) ClaimJob(ctx context.Context, orderID, courierID, courierName, outboxTopic string, buildPayload func(*model.Assignment) interface{}) (*model.Assignment, error) {
+	for _, a := range m.assignments {
+		if a.OrderID == orderID && a.Status == model.AssignmentStatusOpen {
+			a.CourierID = courierID
+			a.CourierName = courierName
+			a.Status = "ASSIGNED"
+			return a, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *MockDispatchRepository) ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error) {
 	var result []model.Assignment
 	for _, a := range m.assignments {
@@ -39,7 +84,7 @@ func (m *MockDispatchRepository) ListAssignments(ctx context.Context, status str
 }
 
 func (m *MockDispatchRepository) GetNoShowAssignments(ctx context.Context, duration time.Duration) ([]model.Assignment, error) {
-	return nil, nil // simplified for unit test
+	return nil, nil
 }
 
 func (m *MockDispatchRepository) GetActiveByOrderID(ctx context.Context, orderID string) (*model.Assignment, error) {
@@ -60,63 +105,67 @@ func (m *MockDispatchRepository) GetByOrderID(ctx context.Context, orderID strin
 	return nil, nil
 }
 
-func (m *MockDispatchRepository) UpdateStatus(ctx context.Context, id string, status string, outboxTopic string, outboxPayload interface{}) error {
+func (m *MockDispatchRepository) UpdateStatus(ctx context.Context, id, status string, outboxTopic string, outboxPayload interface{}) error {
 	if a, ok := m.assignments[id]; ok {
 		a.Status = status
 	}
 	return nil
 }
 
-func TestAutoAssign_Success(t *testing.T) {
-	// Mock Courier Service API
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"data": []map[string]interface{}{
-				{"id": "c-1", "full_name": "Courier 1", "current_lat": -6.917, "current_lng": 107.619},
-				{"id": "c-2", "full_name": "Courier 2", "current_lat": -6.920, "current_lng": 107.620},
-			},
-		}
-		json.NewEncoder(w).Encode(response)
-	}))
-	defer server.Close()
+func (m *MockDispatchRepository) MarkPickedUp(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error {
+	if a, ok := m.assignments[id]; ok {
+		a.Status = "PICKED_UP"
+	}
+	return nil
+}
 
+func (m *MockDispatchRepository) MarkCompleted(ctx context.Context, id string, outboxTopic string, outboxPayload interface{}) error {
+	if a, ok := m.assignments[id]; ok {
+		a.Status = "COMPLETED"
+	}
+	return nil
+}
+
+func (m *MockDispatchRepository) CompleteActiveLeg(ctx context.Context, awb, leg string) (bool, error) {
+	return false, nil
+}
+
+func TestListAssignments(t *testing.T) {
 	repo := NewMockDispatchRepo()
-	svc := service.NewDispatchService(repo, nil, server.URL)
+	svc := service.NewDispatchService(repo, nil, nil, nil, nil)
 
-	err := svc.AutoAssign(context.Background(), "order-123", "AWB123", -6.918, 107.618, "Jl. Merdeka")
+	// Create a test assignment directly in the repo
+	repo.assignments["a1"] = &model.Assignment{
+		ID:       "a1",
+		OrderID:  "order-1",
+		AWB:      "AWB001",
+		Status:   "ASSIGNED",
+	}
+
+	assignments, err := svc.ListAssignments(context.Background(), "", 1, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	assignments, _ := repo.ListAssignments(context.Background(), "", 1, 10)
-	if len(assignments) == 0 {
-		t.Fatal("expected assignment to be created")
+	if len(assignments) != 1 {
+		t.Fatalf("expected 1 assignment, got %d", len(assignments))
 	}
-
-	a := assignments[0]
-	if a.OrderID != "order-123" {
-		t.Errorf("wrong order id: %s", a.OrderID)
-	}
-	// courier-1 is closer than courier-2 to pickup (-6.918, 107.618)
-	if a.CourierID != "c-1" {
-		t.Errorf("expected closest courier (c-1), got %s", a.CourierID)
+	if assignments[0].OrderID != "order-1" {
+		t.Errorf("expected order-1, got %s", assignments[0].OrderID)
 	}
 }
 
-func TestAutoAssign_NoCourier(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"data": []interface{}{},
-		}
-		json.NewEncoder(w).Encode(response)
-	}))
-	defer server.Close()
-
+func TestListAssignments_FilterByStatus(t *testing.T) {
 	repo := NewMockDispatchRepo()
-	svc := service.NewDispatchService(repo, nil, server.URL)
+	svc := service.NewDispatchService(repo, nil, nil, nil, nil)
 
-	err := svc.AutoAssign(context.Background(), "order-123", "AWB123", -6.918, 107.618, "Jl. Merdeka")
-	if err == nil {
-		t.Error("expected error when no courier available")
+	repo.assignments["a1"] = &model.Assignment{ID: "a1", OrderID: "order-1", Status: "ASSIGNED"}
+	repo.assignments["a2"] = &model.Assignment{ID: "a2", OrderID: "order-2", Status: "COMPLETED"}
+
+	assignments, err := svc.ListAssignments(context.Background(), "ASSIGNED", 1, 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(assignments) != 1 {
+		t.Fatalf("expected 1 assignment, got %d", len(assignments))
 	}
 }
