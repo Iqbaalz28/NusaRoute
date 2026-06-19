@@ -176,7 +176,10 @@ pipeline {
         // ========================================
         stage('Push Images') {
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    branch 'joko'
+                }
             }
             steps {
                 script {
@@ -202,7 +205,10 @@ pipeline {
         // ========================================
         stage('Update GitOps Repo') {
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    branch 'joko'
+                }
             }
             steps {
                 dir('back-end') {
