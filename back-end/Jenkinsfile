@@ -33,6 +33,8 @@ pipeline {
             steps {
                 dir('back-end') {
                     sh '''
+                        export HOME=/tmp
+                        export GOPATH=/tmp/go
                         set -e
                         echo "Running unit tests for all services..."
                         
@@ -77,6 +79,8 @@ pipeline {
             steps {
                 dir('back-end') {
                     sh '''
+                        export HOME=/tmp
+                        export GOPATH=/tmp/go
                         set -e
                         echo "Running go vet..."
                         
