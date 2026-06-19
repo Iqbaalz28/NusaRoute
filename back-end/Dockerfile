@@ -15,6 +15,9 @@ COPY pkg/ ./pkg/
 # Copy all services (needed for cross-service replace directives in go.mod)
 COPY services/ ./services/
 
+# Copy API Gateway
+COPY api-gateway/ ./api-gateway/
+
 # Download dependencies
 WORKDIR /app/services/${SERVICE_NAME}
 RUN go mod download
