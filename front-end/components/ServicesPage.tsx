@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { apiPost } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { PriceCalculationRequest, PriceCalculationResponse, Order } from "@/lib/types";
+import { CITIES } from "@/lib/cities";
 
 type Coords = { lat: number; lon: number };
 
@@ -14,31 +15,6 @@ const mapServiceType = (code: string): string => {
   const m: Record<string, string> = { REG: "REGULAR", YES: "EXPRESS", SAME: "SAMEDAY", CARGO: "CARGO" };
   return m[code] || code;
 };
-
-// Supported cities with real coordinates. Using a fixed dropdown list keeps the
-// tariff calculator from receiving invalid free-text input and removes the
-// dependency on an external geocoder.
-type City = { name: string; lat: number; lng: number };
-const CITIES: City[] = [
-  { name: "Jakarta", lat: -6.2088, lng: 106.8456 },
-  { name: "Bogor", lat: -6.5950, lng: 106.8166 },
-  { name: "Bandung", lat: -6.9175, lng: 107.6191 },
-  { name: "Semarang", lat: -6.9667, lng: 110.4167 },
-  { name: "Yogyakarta", lat: -7.7956, lng: 110.3695 },
-  { name: "Surabaya", lat: -7.2575, lng: 112.7521 },
-  { name: "Malang", lat: -7.9819, lng: 112.6265 },
-  { name: "Denpasar (Bali)", lat: -8.6705, lng: 115.2126 },
-  { name: "Medan", lat: 3.5952, lng: 98.6722 },
-  { name: "Padang", lat: -0.9471, lng: 100.4172 },
-  { name: "Pekanbaru", lat: 0.5071, lng: 101.4478 },
-  { name: "Palembang", lat: -2.9761, lng: 104.7754 },
-  { name: "Batam", lat: 1.0456, lng: 104.0305 },
-  { name: "Pontianak", lat: -0.0263, lng: 109.3425 },
-  { name: "Banjarmasin", lat: -3.3194, lng: 114.5908 },
-  { name: "Balikpapan", lat: -1.2379, lng: 116.8529 },
-  { name: "Makassar", lat: -5.1477, lng: 119.4327 },
-  { name: "Manado", lat: 1.4748, lng: 124.8421 },
-];
 
 export const ServicesPage = () => {
   const { isAuthenticated } = useAuth();
@@ -71,6 +47,7 @@ export const ServicesPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderResult, setOrderResult] = useState<Order | null>(null);
+  const [pickupMode, setPickupMode] = useState<"COURIER" | "SELF_DROPOFF">("COURIER");
 
   const calculate = async () => {
     const originCity = CITIES.find(c => c.name === origin);
@@ -162,14 +139,17 @@ export const ServicesPage = () => {
       const body = {
         sender_name: form.sender_name,
         sender_phone: form.sender_phone,
+        sender_city: origin,
         sender_address: form.sender_address || origin,
         sender_lat: originCoords.lat,
         sender_lng: originCoords.lon,
         receiver_name: form.receiver_name,
         receiver_phone: form.receiver_phone,
+        receiver_city: destination,
         receiver_address: form.receiver_address || destination,
         receiver_lat: destCoords.lat,
         receiver_lng: destCoords.lon,
+        pickup_mode: pickupMode,
         item_description: form.item_description || "Barang",
         weight_kg: weight,
         length_cm: dims.l,
@@ -342,6 +322,11 @@ export const ServicesPage = () => {
                   <div className="text-[0.8rem] text-muted font-medium mb-1">Nomor Resi (AWB)</div>
                   <div className="text-2xl font-black tracking-wide text-primary">{orderResult.awb}</div>
                   <div className="text-[0.85rem] text-muted mt-3">Status: <strong>{orderResult.status}</strong></div>
+                  {(orderResult.origin_hub_name || orderResult.dest_hub_name) && (
+                    <div className="text-[0.8rem] text-muted mt-2 text-center">
+                      Rute hub: <strong>{orderResult.origin_hub_name || "-"}</strong> → <strong>{orderResult.dest_hub_name || "-"}</strong>
+                    </div>
+                  )}
                   <div className="text-[0.75rem] text-muted mt-2 text-center">Scan QR ini di Konsol Scan Hub untuk merekam pergerakan paket antar-hub.</div>
                 </div>
                 <button
@@ -393,6 +378,26 @@ export const ServicesPage = () => {
                   <div>
                     <label className="block text-[0.75rem] font-bold uppercase tracking-wider text-muted mb-1.5 ml-1">Deskripsi Barang</label>
                     <input className={inputClass} value={form.item_description} onChange={e => setForm({ ...form, item_description: e.target.value })} placeholder="Misal: Dokumen, pakaian" />
+                  </div>
+
+                  <div>
+                    <label className="block text-[0.75rem] font-bold uppercase tracking-wider text-muted mb-1.5 ml-1">Cara Penjemputan</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPickupMode("COURIER")}
+                        className={`h-12 rounded-2xl border text-[0.9rem] font-semibold transition-all ${pickupMode === "COURIER" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted hover:border-primary/50"}`}
+                      >
+                        🛵 Dijemput kurir
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPickupMode("SELF_DROPOFF")}
+                        className={`h-12 rounded-2xl border text-[0.9rem] font-semibold transition-all ${pickupMode === "SELF_DROPOFF" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted hover:border-primary/50"}`}
+                      >
+                        🏢 Antar sendiri ke hub
+                      </button>
+                    </div>
                   </div>
                 </div>
 

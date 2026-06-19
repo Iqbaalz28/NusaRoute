@@ -41,8 +41,8 @@ func main() {
 	log.Println("Seeding Hub Data...")
 	seedHubs(hubDB)
 
-	log.Println("Seeding Courier Data...")
-	seedCouriers(courierDB)
+	// log.Println("Seeding Courier Data...")
+	// seedCouriers(courierDB)
 
 	log.Println("Seeding Order Data...")
 	seedOrders(orderDB)
@@ -50,20 +50,12 @@ func main() {
 	log.Println("✅ Real data seeded successfully!")
 }
 
+// seedHubs is intentionally a no-op: the canonical 8 hubs (with REAL coordinates)
+// are seeded by hub-service migration 001_create_tables.sql. The previous version
+// inserted duplicate "-02" hubs with bogus coordinates (all clustered near the
+// Java Sea), which corrupted nearest-hub routing — removed.
 func seedHubs(db *sqlx.DB) {
-	cities := []string{"Jakarta", "Bandung", "Surabaya", "Medan", "Makassar", "Bali", "Semarang", "Yogyakarta"}
-	provinces := []string{"DKI Jakarta", "Jawa Barat", "Jawa Timur", "Sumatera Utara", "Sulawesi Selatan", "Bali", "Jawa Tengah", "DI Yogyakarta"}
-	codes := []string{"JKT-02", "BDG-02", "SBY-02", "MDN-02", "MKS-02", "DPS-02", "SMG-02", "YK-02"}
-	for i, city := range cities {
-		_, err := db.Exec(`
-			INSERT INTO hubs (id, name, code, city, province, lat, lng, type, is_active)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			ON CONFLICT (id) DO NOTHING
-		`, fmt.Sprintf("hub-%d", i), "Hub "+city, codes[i], city, provinces[i], -6.2+float64(i)*0.1, 106.8+float64(i)*0.1, "SORTATION", true)
-		if err != nil {
-			log.Printf("Error seeding hub: %v", err)
-		}
-	}
+	log.Println("  (hubs seeded by hub-service migration; skipping)")
 }
 
 func seedCouriers(db *sqlx.DB) {
@@ -82,12 +74,12 @@ func seedCouriers(db *sqlx.DB) {
 func seedOrders(db *sqlx.DB) {
 	now := time.Now()
 	statuses := []string{"DELIVERED", "IN_TRANSIT", "PENDING_PAYMENT", "OUT_FOR_DELIVERY"}
-	
+
 	for i := 0; i < 300; i++ {
 		// Random past date within 7 days
 		daysAgo := rand.Intn(7)
 		createdAt := now.AddDate(0, 0, -daysAgo).Add(time.Duration(-rand.Intn(24)) * time.Hour)
-		
+
 		status := statuses[rand.Intn(len(statuses))]
 		if daysAgo > 2 {
 			status = "DELIVERED" // Older orders are likely delivered

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/nusaroute/pkg/logger"
@@ -13,6 +15,7 @@ import (
 	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/services/courier-service/pkg/grpc/pb"
+	"github.com/nusaroute/services/dispatch-service/internal/broker"
 	"github.com/nusaroute/services/dispatch-service/internal/model"
 	"github.com/nusaroute/services/dispatch-service/internal/repository"
 	"github.com/redis/go-redis/v9"
@@ -20,9 +23,15 @@ import (
 
 type DispatchService interface {
 	AutoAssign(ctx context.Context, orderID, awb string, pickupLat, pickupLng float64, pickupAddr string) error
+	CreateJobFromReady(ctx context.Context, evt events.OrderReadyForPickupEvent) error
+	CreateLastMileJob(ctx context.Context, evt events.OrderReadyForLastMileEvent) error
+	ListOpenJobs(ctx context.Context) ([]model.Assignment, error)
+	ListMyAssignments(ctx context.Context, courierID string) ([]model.Assignment, error)
+	ClaimJob(ctx context.Context, req model.ClaimRequest, courierID string) (*model.Assignment, error)
 	ManualAssign(ctx context.Context, req model.ManualAssignRequest) error
 	PickupPackage(ctx context.Context, req model.PickupRequest) error
 	DeliverPackage(ctx context.Context, req model.DeliverRequest) error
+	HandleHubArrival(ctx context.Context, awb, hubName string) error
 	ListAssignments(ctx context.Context, status string, page, perPage int) ([]model.Assignment, error)
 	RunNoShowMonitor(ctx context.Context)
 }
@@ -32,10 +41,101 @@ type dispatchService struct {
 	producer      *kafka.Producer
 	courierClient pb.CourierServiceClient
 	redis         *redis.Client
+	broker        *broker.Broker
 }
 
-func NewDispatchService(repo repository.DispatchRepository, producer *kafka.Producer, courierClient pb.CourierServiceClient, r *redis.Client) DispatchService {
-	return &dispatchService{repo: repo, producer: producer, courierClient: courierClient, redis: r}
+func NewDispatchService(repo repository.DispatchRepository, producer *kafka.Producer, courierClient pb.CourierServiceClient, r *redis.Client, b *broker.Broker) DispatchService {
+	return &dispatchService{repo: repo, producer: producer, courierClient: courierClient, redis: r, broker: b}
+}
+
+// ErrJobTaken is re-exported so the HTTP layer can map it to 409 Conflict.
+var ErrJobTaken = repository.ErrJobTaken
+
+// createOpenLeg persists an unclaimed leg and pushes it to connected couriers via
+// the SSE broker so they can race to claim it (first-come-first-served).
+func (s *dispatchService) createOpenLeg(ctx context.Context, job *model.Assignment) error {
+	if err := s.repo.CreateOpenJob(ctx, job); err != nil {
+		return fmt.Errorf("failed to create open leg: %w", err)
+	}
+	s.broadcastJob(job)
+	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] 📢 OPEN %s job for order %s (AWB=%s)", job.Leg, job.OrderID, job.AWB))
+	return nil
+}
+
+// CreateJobFromReady opens the first leg when an order is ready:
+//   - DIRECT (same-city instant): one courier sender → receiver.
+//   - VIA_HUB + courier pickup: first-mile job sender → origin hub.
+//   - VIA_HUB + self-dropoff: no job (sender brings it; origin hub scans it in).
+func (s *dispatchService) CreateJobFromReady(ctx context.Context, evt events.OrderReadyForPickupEvent) error {
+	if evt.DeliveryMode == "DIRECT" {
+		return s.createOpenLeg(ctx, &model.Assignment{
+			OrderID: evt.OrderID, AWB: evt.AWB, Leg: model.LegDirect,
+			PickupLat: evt.PickupLat, PickupLng: evt.PickupLng, PickupAddr: evt.PickupAddr,
+			DropoffLat: evt.ReceiverLat, DropoffLng: evt.ReceiverLng, DropoffAddr: evt.ReceiverAddr,
+		})
+	}
+	if evt.PickupMode == "SELF_DROPOFF" {
+		logger.Info(context.Background(), fmt.Sprintf("[Dispatch] Order %s is self-dropoff; awaiting origin-hub scan (no first-mile job)", evt.OrderID))
+		return nil
+	}
+	return s.createOpenLeg(ctx, &model.Assignment{
+		OrderID: evt.OrderID, AWB: evt.AWB, Leg: model.LegFirstMile,
+		PickupLat: evt.PickupLat, PickupLng: evt.PickupLng, PickupAddr: evt.PickupAddr,
+		DropoffLat: evt.OriginHubLat, DropoffLng: evt.OriginHubLng, DropoffAddr: evt.OriginHubName,
+		HubName: evt.OriginHubName,
+	})
+}
+
+// CreateLastMileJob opens the last-mile leg (dest hub → receiver) when a package
+// arrives at its destination hub. Idempotent: skips if the leg already exists.
+func (s *dispatchService) CreateLastMileJob(ctx context.Context, evt events.OrderReadyForLastMileEvent) error {
+	if exists, _ := s.repo.ExistsLeg(ctx, evt.OrderID, model.LegLastMile); exists {
+		return nil
+	}
+	return s.createOpenLeg(ctx, &model.Assignment{
+		OrderID: evt.OrderID, AWB: evt.AWB, Leg: model.LegLastMile,
+		PickupLat: evt.PickupLat, PickupLng: evt.PickupLng, PickupAddr: evt.HubName,
+		DropoffLat: evt.ReceiverLat, DropoffLng: evt.ReceiverLng, DropoffAddr: evt.ReceiverAddr,
+		HubID: evt.HubID, HubName: evt.HubName,
+	})
+}
+
+func (s *dispatchService) broadcastJob(job *model.Assignment) {
+	if s.broker == nil {
+		return
+	}
+	if data, err := json.Marshal(job); err == nil {
+		s.broker.Broadcast(data)
+	}
+}
+
+func (s *dispatchService) ListOpenJobs(ctx context.Context) ([]model.Assignment, error) {
+	return s.repo.ListOpenJobs(ctx)
+}
+
+func (s *dispatchService) ListMyAssignments(ctx context.Context, courierID string) ([]model.Assignment, error) {
+	return s.repo.ListByCourier(ctx, courierID)
+}
+
+// ClaimJob lets a courier atomically take an OPEN job. On success it emits
+// CourierAssigned so the customer is notified the courier is on the way.
+func (s *dispatchService) ClaimJob(ctx context.Context, req model.ClaimRequest, courierID string) (*model.Assignment, error) {
+	buildEvent := func(a *model.Assignment) interface{} {
+		return events.CourierAssignedEvent{
+			BaseEvent: events.BaseEvent{
+				EventID: uuid.New().String(), EventType: events.TopicCourierAssigned,
+				Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
+			OrderID: a.OrderID, AWB: a.AWB,
+			CourierID: a.CourierID, CourierName: a.CourierName,
+			EstimatedPickupTime: time.Now().Add(30 * time.Minute),
+		}
+	}
+	a, err := s.repo.ClaimJob(ctx, req.OrderID, courierID, req.CourierName, events.TopicCourierAssigned, buildEvent)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ✋ Courier %s (%s) claimed order %s", req.CourierName, courierID, req.OrderID))
+	return a, nil
 }
 
 // CourierInfo represents the courier data returned from Courier Service API.
@@ -107,24 +207,45 @@ func (s *dispatchService) PickupPackage(ctx context.Context, req model.PickupReq
 		return fmt.Errorf("no assignment found for order %s (courier not assigned yet): %w", req.OrderID, err)
 	}
 
+	// The courier must scan the sender's digital AWB; it has to match the job.
+	if !awbMatches(req.AWB, a.AWB) {
+		return fmt.Errorf("scanned AWB (%s) does not match this assignment (%s)", req.AWB, a.AWB)
+	}
+
 	lat, lng := req.Lat, req.Lng
 	if lat == 0 && lng == 0 {
 		lat, lng = a.PickupLat, a.PickupLng
 	}
 
-	event := events.PackagePickedUpEvent{
-		BaseEvent: events.BaseEvent{
-			EventID: uuid.New().String(), EventType: events.TopicPackagePickedUp,
-			Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
-		OrderID: a.OrderID, AWB: a.AWB, CourierID: a.CourierID,
-		PickedAt: time.Now(), Lat: lat, Lng: lng,
+	var topic string
+	var event interface{}
+	if a.Leg == model.LegLastMile {
+		// Last-mile pickup = collecting from the destination hub for delivery.
+		topic = events.TopicPackageScannedHub
+		event = events.PackageScannedAtHubEvent{
+			BaseEvent: events.BaseEvent{
+				EventID: uuid.New().String(), EventType: events.TopicPackageScannedHub,
+				Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
+			OrderID: a.OrderID, AWB: a.AWB, HubID: a.HubID, HubName: a.HubName,
+			ScanType: events.ScanTypeDeparted, OperatorID: a.CourierName,
+		}
+	} else {
+		// First-mile / direct pickup = taking custody from the sender.
+		topic = events.TopicPackagePickedUp
+		event = events.PackagePickedUpEvent{
+			BaseEvent: events.BaseEvent{
+				EventID: uuid.New().String(), EventType: events.TopicPackagePickedUp,
+				Timestamp: time.Now(), Source: "dispatch-service", TraceID: logger.GetTraceID(ctx)},
+			OrderID: a.OrderID, AWB: a.AWB, CourierID: a.CourierID,
+			PickedAt: time.Now(), Lat: lat, Lng: lng,
+		}
 	}
 
-	if err := s.repo.MarkPickedUp(ctx, a.ID, events.TopicPackagePickedUp, event); err != nil {
+	if err := s.repo.MarkPickedUp(ctx, a.ID, topic, event); err != nil {
 		return fmt.Errorf("failed to mark picked up: %w", err)
 	}
 
-	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] 📦 Courier %s picked up order %s (AWB=%s)", a.CourierName, a.OrderID, a.AWB))
+	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] 📦 Courier %s picked up %s leg of order %s (AWB=%s)", a.CourierName, a.Leg, a.OrderID, a.AWB))
 	return nil
 }
 
@@ -136,6 +257,19 @@ func (s *dispatchService) DeliverPackage(ctx context.Context, req model.DeliverR
 		return fmt.Errorf("no assignment found for order %s: %w", req.OrderID, err)
 	}
 
+	// The courier must scan the package AWB at the doorstep to confirm delivery.
+	if !awbMatches(req.AWB, a.AWB) {
+		return fmt.Errorf("scanned AWB (%s) does not match this assignment (%s)", req.AWB, a.AWB)
+	}
+
+	// First-mile handover to the origin hub is recorded by the HUB OPERATOR's
+	// inbound scan (the receiving party scans), not by the courier — so there is no
+	// courier "deliver" step for the first leg. The leg is closed via HandleHubArrival.
+	if a.Leg == model.LegFirstMile {
+		return fmt.Errorf("paket leg-pertama diserahkan ke hub asal (operator hub yang scan masuk); kurir tidak melakukan scan antar")
+	}
+
+	// Direct / last-mile dropoff = final delivery to the receiver.
 	event := events.PackageDeliveredEvent{
 		BaseEvent: events.BaseEvent{
 			EventID: uuid.New().String(), EventType: events.TopicPackageDelivered,
@@ -145,10 +279,27 @@ func (s *dispatchService) DeliverPackage(ctx context.Context, req model.DeliverR
 	}
 
 	if err := s.repo.MarkCompleted(ctx, a.ID, events.TopicPackageDelivered, event); err != nil {
-		return fmt.Errorf("failed to mark delivered: %w", err)
+		return fmt.Errorf("failed to mark completed: %w", err)
 	}
 
-	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ✅ Courier %s delivered order %s (AWB=%s) to %s", a.CourierName, a.OrderID, a.AWB, req.ReceiverName))
+	logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ✅ Courier %s completed %s leg of order %s (AWB=%s)", a.CourierName, a.Leg, a.OrderID, a.AWB))
+	return nil
+}
+
+// HandleHubArrival reacts to package.scanned-at-hub (ARRIVED). When a hub operator
+// scans a package IN, the hub takes custody — which completes the courier's
+// first-mile leg (sender → origin hub). The operator performs this scan; the
+// courier does not scan at the hub. No-op when there is no active first-mile leg
+// (self-dropoff orders, or the destination-hub arrival of a package already past
+// its first leg).
+func (s *dispatchService) HandleHubArrival(ctx context.Context, awb, hubName string) error {
+	done, err := s.repo.CompleteActiveLeg(ctx, awb, model.LegFirstMile)
+	if err != nil {
+		return fmt.Errorf("failed to complete first-mile leg for AWB %s: %w", awb, err)
+	}
+	if done {
+		logger.Info(context.Background(), fmt.Sprintf("[Dispatch] 🏢 First-mile handover complete for AWB %s at %s", awb, hubName))
+	}
 	return nil
 }
 
@@ -185,7 +336,7 @@ func (s *dispatchService) RunNoShowMonitor(ctx context.Context) {
 			}
 
 			for _, a := range noShows {
-				logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ⚠️ Courier %s no-show for order %s, reassigning...", a.CourierID, a.OrderID))
+				logger.Info(context.Background(), fmt.Sprintf("[Dispatch] ⚠️ Courier %s no-show for order %s, reopening job...", a.CourierID, a.OrderID))
 				event := events.CourierReassignedEvent{
 					BaseEvent: events.BaseEvent{
 						EventID: uuid.New().String(), EventType: events.TopicCourierReassigned,
@@ -193,14 +344,12 @@ func (s *dispatchService) RunNoShowMonitor(ctx context.Context) {
 					OrderID: a.OrderID, OldCourierID: a.CourierID,
 					Reason: "No-show: courier did not pick up within 2 hours",
 				}
-				s.repo.UpdateStatus(ctx, a.ID, model.AssignmentStatusNoShow, events.TopicCourierReassigned, event)
-
-				// Try to reassign to another courier
-				err := s.AutoAssign(ctx, a.OrderID, a.AWB, a.PickupLat, a.PickupLng, a.PickupAddr)
-				if err != nil {
-					logger.Info(context.Background(), fmt.Sprintf("[Dispatch] Failed to reassign order %s: %v", a.OrderID, err))
+				// Put the job back on the board so another courier can claim it.
+				if err := s.repo.UpdateStatus(ctx, a.ID, model.AssignmentStatusOpen, events.TopicCourierReassigned, event); err != nil {
+					logger.Info(context.Background(), fmt.Sprintf("[Dispatch] Failed to reopen order %s: %v", a.OrderID, err))
 					continue
 				}
+				s.broadcastJob(&a)
 			}
 			lock.Release(ctx)
 		}
@@ -231,6 +380,12 @@ func (s *dispatchService) fetchAvailableCouriers(lat, lng, radiusKm float64) ([]
 	}
 
 	return result, nil
+}
+
+// awbMatches compares a scanned AWB to the expected one, ignoring case and
+// surrounding whitespace (QR scanners sometimes append trailing characters).
+func awbMatches(scanned, expected string) bool {
+	return strings.EqualFold(strings.TrimSpace(scanned), strings.TrimSpace(expected))
 }
 
 func haversine(lat1, lng1, lat2, lng2 float64) float64 {

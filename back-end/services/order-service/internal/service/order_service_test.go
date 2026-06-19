@@ -101,7 +101,7 @@ func (m *MockOrderRepository) MarkCancelled(ctx context.Context, id, outboxTopic
 
 func TestCreateOrder_Success(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, err := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", SenderPhone: "08123456789",
@@ -121,7 +121,7 @@ func TestCreateOrder_Success(t *testing.T) {
 
 func TestCreateOrder_MissingSender(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	_, err := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		ReceiverName: "Siti",
@@ -131,7 +131,7 @@ func TestCreateOrder_MissingSender(t *testing.T) {
 
 func TestCancelOrder_Success(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -148,7 +148,7 @@ func TestCancelOrder_Success(t *testing.T) {
 
 func TestCancelOrder_WrongUser(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -162,7 +162,7 @@ func TestCancelOrder_WrongUser(t *testing.T) {
 
 func TestHandleDeliveryFailed_MaxAttempts(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -181,7 +181,7 @@ func TestHandleDeliveryFailed_MaxAttempts(t *testing.T) {
 
 func TestHandleDeliveryFailed_RetryAllowed(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -200,7 +200,7 @@ func TestHandleDeliveryFailed_RetryAllowed(t *testing.T) {
 
 func TestHandlePackageDelivered(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -217,7 +217,7 @@ func TestHandlePackageDelivered(t *testing.T) {
 
 func TestCreateOrder_DeliveryMode(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	// Instant service within the same city (intra-Jakarta) → DIRECT (skip hub)
 	direct, err := svc.CreateOrder(context.Background(), "u1", model.CreateOrderRequest{
@@ -255,7 +255,7 @@ func TestCreateOrder_DeliveryMode(t *testing.T) {
 
 func TestAdminUpdateStatus(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "u1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -278,7 +278,7 @@ func TestAdminUpdateStatus(t *testing.T) {
 
 func TestListOrders_Pagination(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	// Create multiple orders
 	for i := 0; i < 5; i++ {

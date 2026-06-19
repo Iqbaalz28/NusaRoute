@@ -44,6 +44,7 @@ func main() {
 
 	var h http.Handler = mux
 	h = middleware.CORS(h)
+	h = middleware.HeaderAuth(h) // surface X-User-ID (from gateway) into context
 	h = middleware.Logging(h)
 	h = middleware.Recovery(h)
 	h = middleware.Metrics(h)

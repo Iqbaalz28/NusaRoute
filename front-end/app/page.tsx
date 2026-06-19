@@ -11,8 +11,11 @@ import { CourierPage } from "../components/CourierPage";
 import { HubsPage } from "../components/HubsPage";
 import { AdminPage } from "../components/AdminPage";
 import { LoginModal } from "../components/LoginModal";
+import { useAuth } from "../lib/AuthContext";
+import { canAccessPage } from "../lib/access";
 
 export default function Home() {
+  const { isAuthenticated, user } = useAuth();
   const [activePage, setActivePage] = useState("dashboard");
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [selectedAwb, setSelectedAwb] = useState("");
@@ -23,6 +26,18 @@ export default function Home() {
   };
 
   const renderPage = () => {
+    // Defense-in-depth: if the user can't access the active page (e.g. logged out
+    // while on a staff page, or stale state), fall back to the dashboard.
+    if (!canAccessPage(activePage, isAuthenticated, user?.role)) {
+      return (
+        <DashboardPage
+          onStartShipping={() => setActivePage("services")}
+          onTrackPackage={handleTrackPackage}
+          onNavigate={setActivePage}
+        />
+      );
+    }
+
     switch (activePage) {
       case "dashboard":
         return (

@@ -18,6 +18,7 @@ type HubService interface {
 	Scan(ctx context.Context, req model.ScanRequest) (*model.ScanLog, error)
 	GetScanHistory(ctx context.Context, awb string) ([]model.ScanLog, error)
 	GetManifest(ctx context.Context, hubID string) ([]model.ScanLog, error)
+	GetCurrentInventory(ctx context.Context, hubID string) ([]model.ScanLog, error)
 	ListHubs(ctx context.Context) ([]model.Hub, error)
 	GetDashboardStats(ctx context.Context) (int64, int64, error)
 }
@@ -72,6 +73,10 @@ func (s *hubService) GetScanHistory(ctx context.Context, awb string) ([]model.Sc
 
 func (s *hubService) GetManifest(ctx context.Context, hubID string) ([]model.ScanLog, error) {
 	return s.repo.GetManifest(ctx, hubID, time.Now())
+}
+
+func (s *hubService) GetCurrentInventory(ctx context.Context, hubID string) ([]model.ScanLog, error) {
+	return s.repo.GetCurrentInventory(ctx, hubID)
 }
 
 func (s *hubService) ListHubs(ctx context.Context) ([]model.Hub, error) {

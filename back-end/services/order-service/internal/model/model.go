@@ -10,17 +10,28 @@ type Order struct {
 	Status         string    `json:"status" db:"status"`
 	ServiceType    string    `json:"service_type" db:"service_type"` // REG, YES, CARGO, SAME
 	DeliveryMode   string    `json:"delivery_mode" db:"delivery_mode"` // DIRECT (same-city instant) or VIA_HUB
+	PickupMode     string    `json:"pickup_mode" db:"pickup_mode"`     // COURIER (dijemput) or SELF_DROPOFF (antar sendiri ke hub)
+
+	// Routing: nearest sortation hubs to sender (origin) and receiver (destination),
+	// stamped at creation. Shown on the label/tracking alongside sender→receiver.
+	OriginHubCode  string    `json:"origin_hub_code" db:"origin_hub_code"`
+	OriginHubName  string    `json:"origin_hub_name" db:"origin_hub_name"`
+	DestHubID      string    `json:"dest_hub_id" db:"dest_hub_id"`
+	DestHubCode    string    `json:"dest_hub_code" db:"dest_hub_code"`
+	DestHubName    string    `json:"dest_hub_name" db:"dest_hub_name"`
 
 	// Sender info
 	SenderName     string    `json:"sender_name" db:"sender_name"`
 	SenderPhone    string    `json:"sender_phone" db:"sender_phone"`
-	SenderAddress  string    `json:"sender_address" db:"sender_address"`
+	SenderCity     string    `json:"sender_city" db:"sender_city"`     // city (highlighted on label)
+	SenderAddress  string    `json:"sender_address" db:"sender_address"` // detailed street address
 	SenderLat      float64   `json:"sender_lat" db:"sender_lat"`
 	SenderLng      float64   `json:"sender_lng" db:"sender_lng"`
-	
+
 	// Receiver info
 	ReceiverName   string    `json:"receiver_name" db:"receiver_name"`
 	ReceiverPhone  string    `json:"receiver_phone" db:"receiver_phone"`
+	ReceiverCity   string    `json:"receiver_city" db:"receiver_city"`
 	ReceiverAddress string   `json:"receiver_address" db:"receiver_address"`
 	ReceiverLat    float64   `json:"receiver_lat" db:"receiver_lat"`
 	ReceiverLng    float64   `json:"receiver_lng" db:"receiver_lng"`
@@ -67,13 +78,15 @@ type CreateOrderRequest struct {
 	// Sender
 	SenderName    string  `json:"sender_name"`
 	SenderPhone   string  `json:"sender_phone"`
+	SenderCity    string  `json:"sender_city"`
 	SenderAddress string  `json:"sender_address"`
 	SenderLat     float64 `json:"sender_lat"`
 	SenderLng     float64 `json:"sender_lng"`
-	
+
 	// Receiver
 	ReceiverName    string  `json:"receiver_name"`
 	ReceiverPhone   string  `json:"receiver_phone"`
+	ReceiverCity    string  `json:"receiver_city"`
 	ReceiverAddress string  `json:"receiver_address"`
 	ReceiverLat     float64 `json:"receiver_lat"`
 	ReceiverLng     float64 `json:"receiver_lng"`
@@ -85,6 +98,7 @@ type CreateOrderRequest struct {
 	WidthCm         float64 `json:"width_cm"`
 	HeightCm        float64 `json:"height_cm"`
 	ServiceType     string  `json:"service_type"`
+	PickupMode      string  `json:"pickup_mode"` // COURIER (default) or SELF_DROPOFF
 	IsInsured       bool    `json:"is_insured"`
 	InsuredValue    float64 `json:"insured_value"`
 	

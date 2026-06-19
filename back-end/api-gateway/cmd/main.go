@@ -27,7 +27,8 @@ import (
 type ServiceRoute struct {
 	Prefix    string
 	TargetURL string
-	Public    bool // if true, skip JWT validation
+	Public    bool     // if true, skip JWT validation
+	Roles     []string // if set, require one of these roles (implies JWT)
 }
 
 // RedisRateLimiter implements a fixed-window rate limiter using Redis.
@@ -87,7 +88,7 @@ func main() {
 		{Prefix: "/api/v1/pricing", TargetURL: getEnv("PRICING_SERVICE_URL", "http://localhost:8003"), Public: true},
 		{Prefix: "/api/v1/orders", TargetURL: getEnv("ORDER_SERVICE_URL", "http://localhost:8004"), Public: false},
 		{Prefix: "/api/v1/couriers", TargetURL: getEnv("COURIER_SERVICE_URL", "http://localhost:8005"), Public: false},
-		{Prefix: "/api/v1/dispatch", TargetURL: getEnv("DISPATCH_SERVICE_URL", "http://localhost:8006"), Public: false},
+		{Prefix: "/api/v1/dispatch", TargetURL: getEnv("DISPATCH_SERVICE_URL", "http://localhost:8006"), Public: false, Roles: []string{"COURIER", "ADMIN"}},
 		{Prefix: "/api/v1/hub", TargetURL: getEnv("HUB_SERVICE_URL", "http://localhost:8007"), Public: true},
 		{Prefix: "/api/v1/tracking", TargetURL: getEnv("TRACKING_SERVICE_URL", "http://localhost:8008"), Public: true},
 		{Prefix: "/api/v1/notifications", TargetURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8009"), Public: false},
@@ -216,10 +217,11 @@ func main() {
 		response.Success(w, "dashboard volume retrieved", res.Data)
 	})))
 
-	for _, route := range routes {
-		route := route // capture loop var
-		var proxyHandler http.Handler
-		proxyHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// makeProxyHandler builds a rate-limited reverse-proxy handler for a target
+	// service URL. Shared by the generic route loop and by routes that need a
+	// different auth policy than their parent prefix (e.g. hub scan).
+	makeProxyHandler := func(targetURL string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Rate limiting
 			ip := strings.Split(r.RemoteAddr, ":")[0]
 			if !rateLimiter.Allow(ip) {
@@ -227,7 +229,7 @@ func main() {
 				return
 			}
 
-			target, err := url.Parse(route.TargetURL)
+			target, err := url.Parse(targetURL)
 			if err != nil {
 				http.Error(w, `{"error":"bad gateway"}`, http.StatusBadGateway)
 				return
@@ -249,9 +251,34 @@ func main() {
 			}
 			proxy.ServeHTTP(w, r)
 		})
+	}
 
-		// Apply JWT Auth only if the route is not public
-		if !route.Public {
+	// Hub scan endpoints require a hub operator (or admin) even though the rest of
+	// /api/v1/hub (list, stats, manifest) stays public for the dashboard.
+	// Registered as a more specific prefix so ServeMux longest-prefix match routes
+	// scans through JWT + role enforcement.
+	mux.Handle("/api/v1/hub/scan/", mw.JWTAuth(jwtSecret)(mw.RequireRole("HUB_OPERATOR", "ADMIN")(
+		makeProxyHandler(getEnv("HUB_SERVICE_URL", "http://localhost:8007")))))
+
+	// Admin-only order endpoints. These are more specific than the generic
+	// /api/v1/orders prefix (which customers use to create/list/cancel their own
+	// orders), so ServeMux routes them here for ADMIN-only enforcement.
+	adminOrders := mw.JWTAuth(jwtSecret)(mw.RequireRole("ADMIN")(
+		makeProxyHandler(getEnv("ORDER_SERVICE_URL", "http://localhost:8004"))))
+	mux.Handle("/api/v1/orders/all", adminOrders)
+	mux.Handle("/api/v1/orders/status", adminOrders)
+
+	for _, route := range routes {
+		route := route // capture loop var
+		proxyHandler := makeProxyHandler(route.TargetURL)
+
+		// Role check runs inside JWT auth so the role is already in context.
+		if len(route.Roles) > 0 {
+			proxyHandler = mw.RequireRole(route.Roles...)(proxyHandler)
+		}
+
+		// Apply JWT Auth only if the route is not public (role check implies JWT).
+		if !route.Public || len(route.Roles) > 0 {
 			proxyHandler = mw.JWTAuth(jwtSecret)(proxyHandler)
 		}
 

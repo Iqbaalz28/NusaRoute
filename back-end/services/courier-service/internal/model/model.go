@@ -34,6 +34,15 @@ type RegisterCourierRequest struct {
 	CoverageArea  string  `json:"coverage_area"`
 }
 
+// EnsureCourierRequest get-or-creates a courier row for the authenticated user
+// (UserID comes from the JWT/header, not the body) so a COURIER account is
+// auto-linked to courier data on first use.
+type EnsureCourierRequest struct {
+	FullName string `json:"full_name"`
+	Phone    string `json:"phone"`
+	Email    string `json:"email"`
+}
+
 type UpdateStatusRequest struct {
 	IsOnline bool `json:"is_online"`
 }

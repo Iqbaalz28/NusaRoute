@@ -13,6 +13,7 @@ const SCAN_META: Record<ScanType, { label: string; emoji: string; desc: string }
 };
 
 interface LogEntry { time: string; text: string; ok: boolean; }
+interface InventoryItem { awb: string; scan_type: string; scanned_at: string; }
 
 export const HubScanConsole = () => {
   const [hubs, setHubs] = useState<Hub[]>([]);
@@ -21,6 +22,8 @@ export const HubScanConsole = () => {
   const [operator, setOperator] = useState("OP-01");
   const [busy, setBusy] = useState<ScanType | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [invLoading, setInvLoading] = useState(false);
 
   // Camera scanning state
   const [scanning, setScanning] = useState(false);
@@ -44,6 +47,22 @@ export const HubScanConsole = () => {
     const time = new Date().toLocaleTimeString("id-ID");
     setLog((l) => [{ time, text, ok }, ...l].slice(0, 20));
   };
+
+  // Packages currently inside the selected hub (arrived/sorted, not yet departed).
+  const loadInventory = async (id: string) => {
+    if (!id) { setInventory([]); return; }
+    setInvLoading(true);
+    try {
+      setInventory((await apiGet<InventoryItem[]>(`/api/v1/hub/inventory/${id}`)) || []);
+    } catch {
+      setInventory([]);
+    } finally {
+      setInvLoading(false);
+    }
+  };
+
+  // Reload the inventory whenever the selected hub changes.
+  useEffect(() => { loadInventory(hubId); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [hubId]);
 
   const stopCamera = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -101,9 +120,10 @@ export const HubScanConsole = () => {
     if (!awb.trim()) { pushLog("Masukkan/scan AWB dulu.", false); return; }
     setBusy(type);
     try {
-      await apiPost(`/api/v1/hub/scan/${type}`, { awb: awb.trim(), hub_id: hubId, operator_id: operator });
+      await apiPost(`/api/v1/hub/scan/${type}`, { awb: awb.trim(), hub_id: hubId, operator_id: operator }, { requiresAuth: true });
       const hubName = hubs.find((h) => h.id === hubId)?.name || hubId;
       pushLog(`${SCAN_META[type].label} OK — ${awb.trim()} @ ${hubName}`, true);
+      loadInventory(hubId); // a scan changes what's inside the hub
     } catch (err: any) {
       pushLog(`${SCAN_META[type].label} gagal: ${err.message || "error"}`, false);
     } finally {
@@ -189,6 +209,44 @@ export const HubScanConsole = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Paket di dalam hub saat ini (sudah masuk/sortir, belum keluar) */}
+      <div className="mt-8 pt-6 border-t border-border">
+        <div className="flex items-center gap-3 mb-3">
+          <h3 className="text-base font-bold">
+            📦 Paket di dalam hub ({inventory.length})
+          </h3>
+          <button
+            className="text-[0.8rem] font-bold text-primary hover:underline"
+            onClick={() => loadInventory(hubId)}
+            disabled={invLoading || !hubId}
+          >
+            ↻ Muat ulang
+          </button>
+        </div>
+        {invLoading ? (
+          <div className="text-muted text-sm">Memuat isi hub...</div>
+        ) : inventory.length === 0 ? (
+          <div className="text-muted text-sm border-2 border-dashed border-border rounded-2xl p-5 text-center">
+            Tidak ada paket di dalam hub ini.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {inventory.map((it) => (
+              <span
+                key={it.awb}
+                className="inline-flex items-center gap-2 bg-background border border-border rounded-xl px-3 py-2 text-[0.85rem]"
+                title={`${it.scan_type} • ${new Date(it.scanned_at).toLocaleString("id-ID")}`}
+              >
+                <span className="font-bold tracking-wide">{it.awb}</span>
+                <span className={`text-[0.65rem] font-bold px-1.5 py-0.5 rounded-full ${it.scan_type === "SORTED" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                  {it.scan_type === "SORTED" ? "Tersortir" : "Masuk"}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

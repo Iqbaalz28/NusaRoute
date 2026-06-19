@@ -14,8 +14,10 @@ type HubRepository interface {
 	GetHubByID(ctx context.Context, id string) (*model.Hub, error)
 	ListHubs(ctx context.Context) ([]model.Hub, error)
 	CreateScanLog(ctx context.Context, scan *model.ScanLog, outboxTopic string, outboxPayload interface{}) error
+	RecordScan(ctx context.Context, scan *model.ScanLog) error
 	GetScansByAWB(ctx context.Context, awb string) ([]model.ScanLog, error)
 	GetManifest(ctx context.Context, hubID string, date time.Time) ([]model.ScanLog, error)
+	GetCurrentInventory(ctx context.Context, hubID string) ([]model.ScanLog, error)
 	GetDashboardStats(ctx context.Context) (activeHubs int64, totalCities int64, err error)
 }
 
@@ -62,6 +64,21 @@ func (r *hubRepo) CreateScanLog(ctx context.Context, scan *model.ScanLog, outbox
 	return tx.Commit()
 }
 
+// RecordScan inserts a scan log WITHOUT emitting an outbox event. Used to mirror
+// scans produced by other services (e.g. dispatch's last-mile DEPARTED when a
+// courier collects from the hub) so the hub's current inventory stays accurate.
+func (r *hubRepo) RecordScan(ctx context.Context, scan *model.ScanLog) error {
+	scan.ID = uuid.New().String()
+	if scan.ScannedAt.IsZero() {
+		scan.ScannedAt = time.Now()
+	}
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO scan_logs (id, awb, order_id, hub_id, scan_type, operator_id, note, scanned_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		scan.ID, scan.AWB, scan.OrderID, scan.HubID, scan.ScanType, scan.OperatorID, scan.Note, scan.ScannedAt)
+	return err
+}
+
 func (r *hubRepo) GetScansByAWB(ctx context.Context, awb string) ([]model.ScanLog, error) {
 	var scans []model.ScanLog
 	err := r.db.SelectContext(ctx, &scans, "SELECT * FROM scan_logs WHERE awb = $1 ORDER BY scanned_at", awb)
@@ -75,6 +92,24 @@ func (r *hubRepo) GetManifest(ctx context.Context, hubID string, date time.Time)
 	err := r.db.SelectContext(ctx, &scans,
 		"SELECT * FROM scan_logs WHERE hub_id = $1 AND scanned_at >= $2 AND scanned_at < $3 ORDER BY scanned_at",
 		hubID, startOfDay, endOfDay)
+	return scans, err
+}
+
+// GetCurrentInventory returns the packages physically inside a hub right now:
+// for each AWB, the most recent scan at that hub, kept only when that latest scan
+// is not a DEPARTED (i.e. it arrived/was sorted but hasn't left yet).
+func (r *hubRepo) GetCurrentInventory(ctx context.Context, hubID string) ([]model.ScanLog, error) {
+	var scans []model.ScanLog
+	err := r.db.SelectContext(ctx, &scans,
+		`SELECT * FROM (
+			SELECT DISTINCT ON (awb) *
+			FROM scan_logs
+			WHERE hub_id = $1
+			ORDER BY awb, scanned_at DESC
+		) latest
+		WHERE scan_type <> 'DEPARTED'
+		ORDER BY scanned_at DESC`,
+		hubID)
 	return scans, err
 }
 

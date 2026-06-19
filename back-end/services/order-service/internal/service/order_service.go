@@ -13,6 +13,7 @@ import (
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/logger"
 	"github.com/nusaroute/pkg/routing"
+	"github.com/nusaroute/services/order-service/internal/hubs"
 	"github.com/nusaroute/services/order-service/internal/model"
 	"github.com/nusaroute/services/order-service/internal/repository"
 	"github.com/redis/go-redis/v9"
@@ -28,6 +29,7 @@ type OrderService interface {
 	HandlePaymentSuccess(ctx context.Context, orderID string) error
 	HandleDeliveryFailed(ctx context.Context, orderID string, attempts int) error
 	HandlePackageDelivered(ctx context.Context, orderID string) error
+	HandleHubScan(ctx context.Context, awb, hubID, hubName, scanType string) error
 	RunSLAMonitor(ctx context.Context)
 	RunPaymentExpiryChecker(ctx context.Context)
 	GetDashboardStats(ctx context.Context) (int64, float64, error)
@@ -38,10 +40,11 @@ type orderService struct {
 	repo     repository.OrderRepository
 	producer *kafka.Producer
 	redis    *redis.Client
+	hubs     *hubs.Resolver
 }
 
-func NewOrderService(repo repository.OrderRepository, producer *kafka.Producer, r *redis.Client) OrderService {
-	return &orderService{repo: repo, producer: producer, redis: r}
+func NewOrderService(repo repository.OrderRepository, producer *kafka.Producer, r *redis.Client, hubResolver *hubs.Resolver) OrderService {
+	return &orderService{repo: repo, producer: producer, redis: r, hubs: hubResolver}
 }
 
 // publish safely publishes a Kafka event, skipping if producer is nil (e.g. in tests).
@@ -62,16 +65,34 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req model
 	// pickup courier; everything else is routed through a sortation hub.
 	deliveryMode := routing.DecideRouteByCoords(req.ServiceType, req.SenderLat, req.SenderLng, req.ReceiverLat, req.ReceiverLng)
 
+	// How the package reaches the origin hub: picked up by a courier (default) or
+	// dropped off at the hub by the sender.
+	pickupMode := req.PickupMode
+	if pickupMode != "SELF_DROPOFF" {
+		pickupMode = "COURIER"
+	}
+
 	order := &model.Order{
-		UserID: userID, ServiceType: req.ServiceType, DeliveryMode: deliveryMode,
-		SenderName: req.SenderName, SenderPhone: req.SenderPhone,
+		UserID: userID, ServiceType: req.ServiceType, DeliveryMode: deliveryMode, PickupMode: pickupMode,
+		SenderName: req.SenderName, SenderPhone: req.SenderPhone, SenderCity: req.SenderCity,
 		SenderAddress: req.SenderAddress, SenderLat: req.SenderLat, SenderLng: req.SenderLng,
-		ReceiverName: req.ReceiverName, ReceiverPhone: req.ReceiverPhone,
+		ReceiverName: req.ReceiverName, ReceiverPhone: req.ReceiverPhone, ReceiverCity: req.ReceiverCity,
 		ReceiverAddress: req.ReceiverAddress, ReceiverLat: req.ReceiverLat, ReceiverLng: req.ReceiverLng,
 		ItemDescription: req.ItemDescription, WeightKg: req.WeightKg,
 		LengthCm: req.LengthCm, WidthCm: req.WidthCm, HeightCm: req.HeightCm,
 		IsInsured: req.IsInsured, InsuredValue: req.InsuredValue,
 		ShippingCost: req.ShippingCost, InsuranceCost: req.InsuranceCost, TotalCost: req.TotalCost,
+	}
+
+	// Stamp the nearest sortation hubs to sender (origin) and receiver (dest).
+	// Non-fatal: if the hub list is unavailable, the order is still created.
+	if s.hubs != nil {
+		if h, ok := s.hubs.Nearest(ctx, req.SenderLat, req.SenderLng); ok {
+			order.OriginHubCode, order.OriginHubName = h.Code, h.Name
+		}
+		if h, ok := s.hubs.Nearest(ctx, req.ReceiverLat, req.ReceiverLng); ok {
+			order.DestHubID, order.DestHubCode, order.DestHubName = h.ID, h.Code, h.Name
+		}
 	}
 
 	if err := s.repo.Create(ctx, order); err != nil {
@@ -154,21 +175,37 @@ func (s *orderService) AdminUpdateStatus(ctx context.Context, orderID, status st
 		if err != nil {
 			return err
 		}
-
-		event := events.OrderReadyForPickupEvent{
-			BaseEvent: events.BaseEvent{
-				EventID: uuid.New().String(), EventType: events.TopicOrderReadyForPickup,
-				Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
-			OrderID: orderID, AWB: order.AWB, SenderID: order.UserID,
-			PickupLat: order.SenderLat, PickupLng: order.SenderLng, PickupAddr: order.SenderAddress,
-			ReceiverAddr: order.ReceiverAddress, ReceiverLat: order.ReceiverLat, ReceiverLng: order.ReceiverLng,
-			Weight: order.WeightKg, ServiceType: order.ServiceType,
-		}
-
+		event := s.buildReadyEvent(ctx, order)
 		return s.repo.UpdateStatus(ctx, orderID, status, "Admin marked ready for pickup", "admin", events.TopicOrderReadyForPickup, event)
 	}
 
 	return s.repo.UpdateStatus(ctx, orderID, status, "Admin manual update", "admin", "", nil)
+}
+
+// buildReadyEvent assembles the (enriched) order.ready-for-pickup event, resolving
+// the origin/destination hub coordinates the dispatch service needs to create the
+// first-mile job (or the direct job).
+func (s *orderService) buildReadyEvent(ctx context.Context, order *model.Order) events.OrderReadyForPickupEvent {
+	evt := events.OrderReadyForPickupEvent{
+		BaseEvent: events.BaseEvent{
+			EventID: uuid.New().String(), EventType: events.TopicOrderReadyForPickup,
+			Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
+		OrderID: order.ID, AWB: order.AWB, SenderID: order.UserID,
+		PickupLat: order.SenderLat, PickupLng: order.SenderLng, PickupAddr: order.SenderAddress,
+		ReceiverAddr: order.ReceiverAddress, ReceiverLat: order.ReceiverLat, ReceiverLng: order.ReceiverLng,
+		Weight: order.WeightKg, ServiceType: order.ServiceType,
+		DeliveryMode: order.DeliveryMode, PickupMode: order.PickupMode,
+		OriginHubName: order.OriginHubName, DestHubID: order.DestHubID, DestHubName: order.DestHubName,
+	}
+	if s.hubs != nil {
+		if h, ok := s.hubs.Nearest(ctx, order.SenderLat, order.SenderLng); ok {
+			evt.OriginHubName, evt.OriginHubLat, evt.OriginHubLng = h.Name, h.Lat, h.Lng
+		}
+		if h, ok := s.hubs.Nearest(ctx, order.ReceiverLat, order.ReceiverLng); ok {
+			evt.DestHubID, evt.DestHubName, evt.DestHubLat, evt.DestHubLng = h.ID, h.Name, h.Lat, h.Lng
+		}
+	}
+	return evt
 }
 
 func (s *orderService) HandlePaymentSuccess(ctx context.Context, orderID string) error {
@@ -177,16 +214,7 @@ func (s *orderService) HandlePaymentSuccess(ctx context.Context, orderID string)
 		return err
 	}
 
-	event := events.OrderReadyForPickupEvent{
-		BaseEvent: events.BaseEvent{
-			EventID: uuid.New().String(), EventType: events.TopicOrderReadyForPickup,
-			Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
-		OrderID: orderID, AWB: order.AWB, SenderID: order.UserID,
-		PickupLat: order.SenderLat, PickupLng: order.SenderLng, PickupAddr: order.SenderAddress,
-		ReceiverAddr: order.ReceiverAddress, ReceiverLat: order.ReceiverLat, ReceiverLng: order.ReceiverLng,
-		Weight: order.WeightKg, ServiceType: order.ServiceType,
-	}
-
+	event := s.buildReadyEvent(ctx, order)
 	if err := s.repo.UpdateStatus(ctx, orderID, events.OrderStatusReadyForPickup, "Payment confirmed", "payment-service", events.TopicOrderReadyForPickup, event); err != nil {
 		return err
 	}
@@ -206,6 +234,44 @@ func (s *orderService) HandleDeliveryFailed(ctx context.Context, orderID string,
 
 func (s *orderService) HandlePackageDelivered(ctx context.Context, orderID string) error {
 	return s.repo.MarkDelivered(ctx, orderID)
+}
+
+// HandleHubScan reacts to package.scanned-at-hub. When a VIA_HUB package ARRIVES
+// at its destination hub, it emits order.ready-for-last-mile so dispatch opens the
+// last-mile job (dest hub → receiver). Other scans are ignored. Keyed on AWB —
+// that is what the hub operator scans; the console does not send an order_id.
+func (s *orderService) HandleHubScan(ctx context.Context, awb, hubID, hubName, scanType string) error {
+	if scanType != events.ScanTypeArrived {
+		return nil
+	}
+	order, err := s.repo.GetByAWB(ctx, awb)
+	if err != nil {
+		return nil // unknown AWB — ignore
+	}
+	if order.DeliveryMode == routing.RouteDirect || order.DestHubID == "" || hubID != order.DestHubID {
+		return nil // not the destination hub (or direct delivery, no hub leg)
+	}
+	switch order.Status {
+	case events.OrderStatusOutForDelivery, events.OrderStatusDelivered, events.OrderStatusCancelled, events.OrderStatusReturnToSender:
+		return nil // already past arrival — avoid re-opening the last-mile job
+	}
+
+	evt := events.OrderReadyForLastMileEvent{
+		BaseEvent: events.BaseEvent{
+			EventID: uuid.New().String(), EventType: events.TopicOrderReadyForLastMile,
+			Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
+		OrderID: order.ID, AWB: order.AWB, HubID: hubID, HubName: hubName, PickupAddr: hubName,
+		ReceiverAddr: order.ReceiverAddress, ReceiverLat: order.ReceiverLat, ReceiverLng: order.ReceiverLng,
+	}
+	if s.hubs != nil {
+		if h, ok := s.hubs.Nearest(ctx, order.ReceiverLat, order.ReceiverLng); ok {
+			evt.PickupLat, evt.PickupLng = h.Lat, h.Lng
+			if evt.HubName == "" {
+				evt.HubName, evt.PickupAddr = h.Name, h.Name
+			}
+		}
+	}
+	return s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusInTransit, "Arrived at destination hub", "hub-service", events.TopicOrderReadyForLastMile, evt)
 }
 
 // RunSLAMonitor checks for packages stuck > 48 hours without status updates.

@@ -65,14 +65,18 @@ func (r *orderRepo) Create(ctx context.Context, order *model.Order) error {
 			receiver_name, receiver_phone, receiver_address, receiver_lat, receiver_lng,
 			item_description, weight_kg, length_cm, width_cm, height_cm,
 			is_insured, insured_value, shipping_cost, insurance_cost, total_cost,
-			delivery_attempts, created_at, updated_at, delivery_mode
+			delivery_attempts, created_at, updated_at, delivery_mode,
+			origin_hub_code, origin_hub_name, dest_hub_code, dest_hub_name,
+			pickup_mode, dest_hub_id, sender_city, receiver_city
 		) VALUES (
 			$1, $2, $3, $4, $5,
 			$6, $7, $8, $9, $10,
 			$11, $12, $13, $14, $15,
 			$16, $17, $18, $19, $20,
 			$21, $22, $23, $24, $25,
-			$26, $27, $28, $29
+			$26, $27, $28, $29,
+			$30, $31, $32, $33,
+			$34, $35, $36, $37
 		)
 	`
 	_, err := r.db.ExecContext(ctx, query,
@@ -82,6 +86,8 @@ func (r *orderRepo) Create(ctx context.Context, order *model.Order) error {
 		order.ItemDescription, order.WeightKg, order.LengthCm, order.WidthCm, order.HeightCm,
 		order.IsInsured, order.InsuredValue, order.ShippingCost, order.InsuranceCost, order.TotalCost,
 		order.DeliveryAttempts, order.CreatedAt, order.UpdatedAt, order.DeliveryMode,
+		order.OriginHubCode, order.OriginHubName, order.DestHubCode, order.DestHubName,
+		order.PickupMode, order.DestHubID, order.SenderCity, order.ReceiverCity,
 	)
 	return err
 }

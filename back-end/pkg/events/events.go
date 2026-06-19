@@ -14,8 +14,9 @@ const (
 	TopicPaymentFailed  = "payment.failed"
 
 	// Order events
-	TopicOrderReadyForPickup = "order.ready-for-pickup"
-	TopicOrderCancelled      = "order.cancelled"
+	TopicOrderReadyForPickup   = "order.ready-for-pickup"
+	TopicOrderReadyForLastMile = "order.ready-for-last-mile"
+	TopicOrderCancelled        = "order.cancelled"
 
 	// Courier/Dispatch events
 	TopicCourierAssigned   = "courier.assigned"
@@ -81,6 +82,33 @@ type OrderReadyForPickupEvent struct {
 	ReceiverLng  float64 `json:"receiver_lng"`
 	Weight       float64 `json:"weight_kg"`
 	ServiceType  string  `json:"service_type"` // REG, YES, CARGO
+
+	// Routing for the two-leg hub-and-spoke flow.
+	DeliveryMode  string  `json:"delivery_mode"` // DIRECT or VIA_HUB
+	PickupMode    string  `json:"pickup_mode"`   // COURIER or SELF_DROPOFF
+	OriginHubName string  `json:"origin_hub_name"`
+	OriginHubLat  float64 `json:"origin_hub_lat"`
+	OriginHubLng  float64 `json:"origin_hub_lng"`
+	DestHubID     string  `json:"dest_hub_id"`
+	DestHubName   string  `json:"dest_hub_name"`
+	DestHubLat    float64 `json:"dest_hub_lat"`
+	DestHubLng    float64 `json:"dest_hub_lng"`
+}
+
+// OrderReadyForLastMileEvent is published when a package arrives at its
+// destination hub, opening the last-mile job (dest hub → receiver).
+type OrderReadyForLastMileEvent struct {
+	BaseEvent
+	OrderID      string  `json:"order_id"`
+	AWB          string  `json:"awb"`
+	HubID        string  `json:"hub_id"`
+	HubName      string  `json:"hub_name"`
+	PickupLat    float64 `json:"pickup_lat"`  // dest hub location
+	PickupLng    float64 `json:"pickup_lng"`
+	PickupAddr   string  `json:"pickup_address"`
+	ReceiverAddr string  `json:"receiver_address"`
+	ReceiverLat  float64 `json:"receiver_lat"`
+	ReceiverLng  float64 `json:"receiver_lng"`
 }
 
 // OrderCancelledEvent is published when an order is cancelled.

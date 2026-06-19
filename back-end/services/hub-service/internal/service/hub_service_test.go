@@ -47,6 +47,13 @@ func (m *MockHubRepository) CreateScanLog(ctx context.Context, scan *model.ScanL
 	return nil
 }
 
+func (m *MockHubRepository) RecordScan(ctx context.Context, scan *model.ScanLog) error {
+	scan.ID = "scan-ext-id"
+	if scan.ScannedAt.IsZero() { scan.ScannedAt = time.Now() }
+	m.scans = append(m.scans, *scan)
+	return nil
+}
+
 func (m *MockHubRepository) GetScansByAWB(ctx context.Context, awb string) ([]model.ScanLog, error) {
 	var result []model.ScanLog
 	for _, s := range m.scans {
@@ -59,6 +66,25 @@ func (m *MockHubRepository) GetManifest(ctx context.Context, hubID string, date 
 	var result []model.ScanLog
 	for _, s := range m.scans {
 		if s.HubID == hubID { result = append(result, s) }
+	}
+	return result, nil
+}
+
+func (m *MockHubRepository) GetDashboardStats(ctx context.Context) (int64, int64, error) {
+	return int64(len(m.hubs)), int64(len(m.hubs)), nil
+}
+
+func (m *MockHubRepository) GetCurrentInventory(ctx context.Context, hubID string) ([]model.ScanLog, error) {
+	latest := map[string]model.ScanLog{}
+	for _, s := range m.scans {
+		if s.HubID != hubID { continue }
+		if cur, ok := latest[s.AWB]; !ok || s.ScannedAt.After(cur.ScannedAt) {
+			latest[s.AWB] = s
+		}
+	}
+	var result []model.ScanLog
+	for _, s := range latest {
+		if s.ScanType != "DEPARTED" { result = append(result, s) }
 	}
 	return result, nil
 }

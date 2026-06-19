@@ -206,6 +206,11 @@ export const AdminPage = () => {
             <div className="text-[0.8rem] text-muted font-medium">Nomor Resi (AWB)</div>
             <div className="text-xl font-black tracking-wide text-primary">{qrOrder.awb}</div>
             <div className="text-[0.85rem] text-muted mt-2">{qrOrder.sender_name} → {qrOrder.receiver_name}</div>
+            {(qrOrder.origin_hub_name || qrOrder.dest_hub_name) && (
+              <div className="text-[0.8rem] text-muted mt-1">
+                Hub: {(qrOrder.origin_hub_name || "-")}{qrOrder.origin_hub_code ? ` (${qrOrder.origin_hub_code})` : ""} → {(qrOrder.dest_hub_name || "-")}{qrOrder.dest_hub_code ? ` (${qrOrder.dest_hub_code})` : ""}
+              </div>
+            )}
           </div>
         </div>
       )}

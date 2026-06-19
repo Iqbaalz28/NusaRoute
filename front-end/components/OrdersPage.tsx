@@ -43,7 +43,8 @@ export const OrdersPage = () => {
       id: o.id.substring(0, 12).toUpperCase(),
       awb: o.awb,
       date: new Date(o.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
-      destination: o.receiver_address?.split(',')[0] || "Unknown", // Simplified destination
+      destination: o.receiver_city || o.receiver_address?.split(',')[0] || "Unknown",
+      route: `${o.sender_city || "-"} → ${o.receiver_city || "-"}`,
       service: o.service_type === 'EXPRESS' ? '⚡ Ekspres' : o.service_type === 'CARGO' ? '📦 Kargo' : '🚚 Standar',
       price: `Rp ${o.total_cost.toLocaleString('id-ID')}`,
       status: o.status,
@@ -147,6 +148,32 @@ export const OrdersPage = () => {
             <div className="text-[0.8rem] text-muted font-medium">Nomor Resi (AWB)</div>
             <div className="text-xl font-black tracking-wide text-primary">{selected.awb}</div>
             <div className="text-[0.85rem] text-muted mt-2">Status: <strong>{selected.statusLabel}</strong></div>
+            {(() => {
+              const o = orders.find((x) => x.awb === selected.awb);
+              if (!o) return null;
+              return (
+                <div className="mt-5 pt-5 border-t border-border text-left text-[0.85rem] space-y-2">
+                  {(o.sender_city || o.receiver_city) && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">Kota</span>
+                      <span className="font-black text-primary text-right">{o.sender_city || "-"} → {o.receiver_city || "-"}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted">Pengirim → Penerima</span>
+                    <span className="font-semibold text-right">{o.sender_name} → {o.receiver_name}</span>
+                  </div>
+                  {(o.origin_hub_name || o.dest_hub_name) && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">Hub Asal → Tujuan</span>
+                      <span className="font-semibold text-right">
+                        {(o.origin_hub_name || "-")}{o.origin_hub_code ? ` (${o.origin_hub_code})` : ""} → {(o.dest_hub_name || "-")}{o.dest_hub_code ? ` (${o.dest_hub_code})` : ""}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

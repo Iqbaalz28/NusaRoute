@@ -48,6 +48,10 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Public self-registration must never grant a privileged role. Force the
+	// default (USER); elevated roles are assigned only via seeding/admin tooling.
+	req.Role = ""
+
 	user, err := h.svc.Register(r.Context(), req)
 	if err != nil {
 		response.BadRequest(w, err.Error())

@@ -263,6 +263,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_order
       - KAFKA_BROKERS=kafka:29092
+      - HUB_SERVICE_URL=http://hub-service:8007
     depends_on:
       postgres:
         condition: service_healthy

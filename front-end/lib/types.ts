@@ -91,12 +91,20 @@ export interface Order {
   receiver_name: string;
   receiver_phone: string;
   receiver_address: string;
+  sender_city?: string;
+  receiver_city?: string;
+  item_description?: string;
   weight_kg: number;
   length_cm: number;
   width_cm: number;
   height_cm: number;
   shipping_cost: number;
   total_cost: number;
+  // Routing: nearest sortation hubs to sender (origin) and receiver (destination).
+  origin_hub_code?: string;
+  origin_hub_name?: string;
+  dest_hub_code?: string;
+  dest_hub_name?: string;
   created_at: string;
   updated_at: string;
 }
@@ -107,8 +115,15 @@ export interface Assignment {
   awb: string;
   courier_id: string;
   courier_name: string;
-  status: string; // ASSIGNED, PICKED_UP, COMPLETED, NO_SHOW, REASSIGNED
+  status: string; // OPEN, ASSIGNED, PICKED_UP, COMPLETED, NO_SHOW, REASSIGNED
+  leg?: string; // FIRST_MILE, LAST_MILE, DIRECT
   pickup_address: string;
+  pickup_lat?: number;
+  pickup_lng?: number;
+  dropoff_address?: string;
+  dropoff_lat?: number;
+  dropoff_lng?: number;
+  hub_name?: string;
   assigned_at: string;
   picked_up_at?: string;
   completed_at?: string;

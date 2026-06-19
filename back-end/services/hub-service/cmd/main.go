@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/nusaroute/pkg/database"
+	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/middleware"
 	"github.com/nusaroute/pkg/outbox"
@@ -54,6 +55,26 @@ func main() {
 
 	// Outbox Worker — drains hub scan events (package.scanned-at-hub) to Kafka
 	outbox.NewWorker(db, producer, 2*time.Second).Start(ctx)
+
+	// Mirror scans emitted by OTHER services (e.g. dispatch's last-mile DEPARTED
+	// when a courier collects from the hub) into scan_logs so the hub's current
+	// inventory stays accurate. Skip our own events to avoid a write loop.
+	consumerGroup := kafka.NewConsumerGroup()
+	consumerGroup.Subscribe(ctx, kafkaBrokers, events.TopicPackageScannedHub, "hub-service",
+		func(ctx context.Context, key, value []byte) error {
+			var evt events.PackageScannedAtHubEvent
+			if err := json.Unmarshal(value, &evt); err != nil {
+				return err
+			}
+			if evt.Source == "hub-service" || evt.HubID == "" {
+				return nil // our own scan (already stored) or no hub context
+			}
+			return hubRepo.RecordScan(ctx, &model.ScanLog{
+				AWB: evt.AWB, OrderID: evt.OrderID, HubID: evt.HubID,
+				ScanType: evt.ScanType, OperatorID: evt.OperatorID, ScannedAt: evt.Timestamp,
+			})
+		})
+	defer consumerGroup.CloseAll()
 
 	// Start Stateful Stream Processor (Tumbling Window)
 	windowSize := 60 * time.Second // 1 minute tumbling window
@@ -117,6 +138,17 @@ func main() {
 			return
 		}
 		response.Success(w, "manifest retrieved", manifest)
+	})
+	// Packages currently inside a hub (arrived/sorted but not yet departed).
+	mux.HandleFunc("GET /api/v1/hub/inventory/", func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(r.URL.Path, "/")
+		hubID := parts[len(parts)-1]
+		inv, err := hubSvc.GetCurrentInventory(r.Context(), hubID)
+		if err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
+		response.Success(w, "inventory retrieved", inv)
 	})
 	mux.HandleFunc("GET /api/v1/hub/list", func(w http.ResponseWriter, r *http.Request) {
 		hubs, err := hubSvc.ListHubs(r.Context())

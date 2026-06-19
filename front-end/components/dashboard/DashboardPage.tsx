@@ -44,7 +44,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onStartShipping, o
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-heading font-bold text-base text-text">🚚 Perbandingan Layanan</h2>
           </div>
-          <ServiceComparison />
+          <ServiceComparison onNavigate={onNavigate} />
         </div>
       </div>
 

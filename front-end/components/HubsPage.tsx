@@ -2,10 +2,13 @@
 
 import React, { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
+import { useAuth } from "@/lib/AuthContext";
+import { canScanHub } from "@/lib/access";
 import { Hub } from "@/lib/types";
 import { HubScanConsole } from "./HubScanConsole";
 
 export const HubsPage = () => {
+  const { isAuthenticated, user } = useAuth();
   const [hubs, setHubs] = useState<Hub[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +37,8 @@ export const HubsPage = () => {
         </p>
       </div>
 
-      <HubScanConsole />
+      {/* Hub list below is public; the scan console is operator/admin only. */}
+      {canScanHub(isAuthenticated, user?.role) && <HubScanConsole />}
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

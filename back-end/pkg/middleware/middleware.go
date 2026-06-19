@@ -52,19 +52,23 @@ func GenerateToken(userID, email, role, secret string) (string, error) {
 func JWTAuth(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
+			var tokenString string
+			if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+				parts := strings.SplitN(authHeader, " ", 2)
+				if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+					http.Error(w, `{"error":"invalid authorization format"}`, http.StatusUnauthorized)
+					return
+				}
+				tokenString = parts[1]
+			} else if qt := r.URL.Query().Get("token"); qt != "" {
+				// EventSource (SSE) and WebSocket clients can't set custom headers,
+				// so they pass the JWT as a query param instead.
+				tokenString = qt
+			} else {
 				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
 				return
 			}
 
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-				http.Error(w, `{"error":"invalid authorization format"}`, http.StatusUnauthorized)
-				return
-			}
-
-			tokenString := parts[1]
 			claims := &JWTClaims{}
 
 			token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
@@ -208,6 +212,14 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Flush propagates to the underlying writer so SSE/streaming handlers keep working
+// through this wrapper.
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // GetUserID extracts user ID from request context.

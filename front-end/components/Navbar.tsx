@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/lib/AuthContext";
+import { canAccessPage } from "@/lib/access";
 
 interface NavbarProps {
   activePage: string;
@@ -32,7 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activePage, setActivePage, onLog
     { id: "courier", label: "Kurir" },
     { id: "hubs", label: "Hub" },
     { id: "admin", label: "Admin" },
-  ];
+  ].filter((link) => canAccessPage(link.id, isAuthenticated, user?.role));
 
   return (
     <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 ${scrolled ? "bg-surface border-b border-border shadow-soft" : "bg-background/80 backdrop-blur-md"}`} id="mainNav">
