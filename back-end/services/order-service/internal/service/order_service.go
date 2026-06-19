@@ -22,6 +22,7 @@ import (
 type OrderService interface {
 	CreateOrder(ctx context.Context, userID string, req model.CreateOrderRequest) (*model.Order, error)
 	GetOrder(ctx context.Context, id string) (*model.Order, error)
+	GetOrderByAWB(ctx context.Context, awb string) (*model.Order, error)
 	ListOrders(ctx context.Context, userID string, page, perPage int) ([]model.Order, int64, error)
 	CancelOrder(ctx context.Context, orderID, userID string) error
 	ListAllOrders(ctx context.Context, page, perPage int, search string) ([]model.Order, int64, error)
@@ -29,6 +30,7 @@ type OrderService interface {
 	HandlePaymentSuccess(ctx context.Context, orderID string) error
 	HandleDeliveryFailed(ctx context.Context, orderID string, attempts int) error
 	HandlePackageDelivered(ctx context.Context, orderID string) error
+	HandlePackagePickedUp(ctx context.Context, awb string) error
 	HandleHubScan(ctx context.Context, awb, hubID, hubName, scanType string) error
 	RunSLAMonitor(ctx context.Context)
 	RunPaymentExpiryChecker(ctx context.Context)
@@ -105,6 +107,10 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, req model
 
 func (s *orderService) GetOrder(ctx context.Context, id string) (*model.Order, error) {
 	return s.repo.GetByID(ctx, id)
+}
+
+func (s *orderService) GetOrderByAWB(ctx context.Context, awb string) (*model.Order, error) {
+	return s.repo.GetByAWB(ctx, awb)
 }
 
 func (s *orderService) ListOrders(ctx context.Context, userID string, page, perPage int) ([]model.Order, int64, error) {
@@ -236,42 +242,77 @@ func (s *orderService) HandlePackageDelivered(ctx context.Context, orderID strin
 	return s.repo.MarkDelivered(ctx, orderID)
 }
 
-// HandleHubScan reacts to package.scanned-at-hub. When a VIA_HUB package ARRIVES
-// at its destination hub, it emits order.ready-for-last-mile so dispatch opens the
-// last-mile job (dest hub → receiver). Other scans are ignored. Keyed on AWB —
-// that is what the hub operator scans; the console does not send an order_id.
-func (s *orderService) HandleHubScan(ctx context.Context, awb, hubID, hubName, scanType string) error {
-	if scanType != events.ScanTypeArrived {
-		return nil
-	}
+// HandlePackagePickedUp reacts to package.picked-up (first-mile / direct pickup):
+// the courier has taken custody from the sender, so the order leaves
+// READY_FOR_PICKUP for PICKED_UP. Keyed on AWB. Only advances from a pre-pickup
+// state so it never regresses a package that is already further along.
+func (s *orderService) HandlePackagePickedUp(ctx context.Context, awb string) error {
 	order, err := s.repo.GetByAWB(ctx, awb)
 	if err != nil {
 		return nil // unknown AWB — ignore
 	}
-	if order.DeliveryMode == routing.RouteDirect || order.DestHubID == "" || hubID != order.DestHubID {
-		return nil // not the destination hub (or direct delivery, no hub leg)
+	if order.Status == events.OrderStatusReadyForPickup || order.Status == events.OrderStatusPendingPayment {
+		return s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusPickedUp, "Picked up by courier", "dispatch-service", "", nil)
 	}
+	return nil
+}
+
+// HandleHubScan reacts to package.scanned-at-hub and advances the order status as
+// the package moves through the hub network (keyed on AWB — the console sends no
+// order_id):
+//   - any hub ARRIVED/DEPARTED → IN_TRANSIT (so an order in a hub no longer shows
+//     READY_FOR_PICKUP / PICKED_UP)
+//   - ARRIVED at the destination hub → also emit order.ready-for-last-mile so
+//     dispatch opens the last-mile job
+//   - DEPARTED from the destination hub (last-mile courier collected) → OUT_FOR_DELIVERY
+func (s *orderService) HandleHubScan(ctx context.Context, awb, hubID, hubName, scanType string) error {
+	order, err := s.repo.GetByAWB(ctx, awb)
+	if err != nil {
+		return nil // unknown AWB — ignore
+	}
+	// Never move a terminal/finished order backward.
 	switch order.Status {
-	case events.OrderStatusOutForDelivery, events.OrderStatusDelivered, events.OrderStatusCancelled, events.OrderStatusReturnToSender:
-		return nil // already past arrival — avoid re-opening the last-mile job
+	case events.OrderStatusDelivered, events.OrderStatusCancelled,
+		events.OrderStatusReturnToSender, events.OrderStatusLostSuspected:
+		return nil
 	}
 
-	evt := events.OrderReadyForLastMileEvent{
-		BaseEvent: events.BaseEvent{
-			EventID: uuid.New().String(), EventType: events.TopicOrderReadyForLastMile,
-			Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
-		OrderID: order.ID, AWB: order.AWB, HubID: hubID, HubName: hubName, PickupAddr: hubName,
-		ReceiverAddr: order.ReceiverAddress, ReceiverLat: order.ReceiverLat, ReceiverLng: order.ReceiverLng,
-	}
-	if s.hubs != nil {
-		if h, ok := s.hubs.Nearest(ctx, order.ReceiverLat, order.ReceiverLng); ok {
-			evt.PickupLat, evt.PickupLng = h.Lat, h.Lng
-			if evt.HubName == "" {
-				evt.HubName, evt.PickupAddr = h.Name, h.Name
+	atDestHub := order.DeliveryMode != routing.RouteDirect && order.DestHubID != "" && hubID == order.DestHubID
+
+	// Arrived at the destination hub → open the last-mile leg (idempotent in
+	// dispatch via ExistsLeg) and mark IN_TRANSIT.
+	if scanType == events.ScanTypeArrived && atDestHub && order.Status != events.OrderStatusOutForDelivery {
+		evt := events.OrderReadyForLastMileEvent{
+			BaseEvent: events.BaseEvent{
+				EventID: uuid.New().String(), EventType: events.TopicOrderReadyForLastMile,
+				Timestamp: time.Now(), Source: "order-service", TraceID: logger.GetTraceID(ctx)},
+			OrderID: order.ID, AWB: order.AWB, HubID: hubID, HubName: hubName, PickupAddr: hubName,
+			ReceiverAddr: order.ReceiverAddress, ReceiverLat: order.ReceiverLat, ReceiverLng: order.ReceiverLng,
+		}
+		if s.hubs != nil {
+			if h, ok := s.hubs.Nearest(ctx, order.ReceiverLat, order.ReceiverLng); ok {
+				evt.PickupLat, evt.PickupLng = h.Lat, h.Lng
+				if evt.HubName == "" {
+					evt.HubName, evt.PickupAddr = h.Name, h.Name
+				}
 			}
 		}
+		return s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusInTransit, "Arrived at destination hub", "hub-service", events.TopicOrderReadyForLastMile, evt)
 	}
-	return s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusInTransit, "Arrived at destination hub", "hub-service", events.TopicOrderReadyForLastMile, evt)
+
+	// Departed the destination hub with the last-mile courier → out for delivery.
+	if scanType == events.ScanTypeDeparted && atDestHub {
+		if order.Status != events.OrderStatusOutForDelivery {
+			return s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusOutForDelivery, "Out for delivery from "+hubName, "hub-service", "", nil)
+		}
+		return nil
+	}
+
+	// Any other hub scan (origin/intermediate arrive or depart) → in transit.
+	if (scanType == events.ScanTypeArrived || scanType == events.ScanTypeDeparted) && order.Status != events.OrderStatusInTransit {
+		return s.repo.UpdateStatus(ctx, order.ID, events.OrderStatusInTransit, "In transit via "+hubName, "hub-service", "", nil)
+	}
+	return nil
 }
 
 // RunSLAMonitor checks for packages stuck > 48 hours without status updates.

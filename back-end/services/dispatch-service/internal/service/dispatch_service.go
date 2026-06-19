@@ -173,6 +173,7 @@ func (s *dispatchService) AutoAssign(ctx context.Context, orderID, awb string, p
 		CourierID: bestCourier.ID, CourierName: bestCourier.FullName,
 		PickupLat: pickupLat, PickupLng: pickupLng, PickupAddr: pickupAddr,
 	}
+
 	// Publish CourierAssigned event
 	event := events.CourierAssignedEvent{
 		BaseEvent: events.BaseEvent{

@@ -10,6 +10,7 @@ import { ServicesPage } from "../components/ServicesPage";
 import { CourierPage } from "../components/CourierPage";
 import { HubsPage } from "../components/HubsPage";
 import { AdminPage } from "../components/AdminPage";
+import { AnalyticsPage } from "../components/AnalyticsPage";
 import { LoginModal } from "../components/LoginModal";
 import { useAuth } from "../lib/AuthContext";
 import { canAccessPage } from "../lib/access";
@@ -59,6 +60,8 @@ export default function Home() {
         return <HubsPage />;
       case "admin":
         return <AdminPage />;
+      case "analytics":
+        return <AnalyticsPage />;
       default:
         return (
           <DashboardPage

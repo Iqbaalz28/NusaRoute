@@ -72,6 +72,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 
+	// --- Customer endpoints (JWT, any authenticated user) ---
 	mux.HandleFunc("POST /api/v1/resolutions/tickets", func(w http.ResponseWriter, r *http.Request) {
 		var req model.CreateTicketRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -87,40 +88,33 @@ func main() {
 		response.Created(w, "ticket created", ticket)
 	})
 
-	mux.HandleFunc("GET /api/v1/resolutions/tickets/", func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(r.URL.Path, "/")
-		id := parts[len(parts)-1]
-		ticket, err := resolutionSvc.GetTicketByID(r.Context(), id)
+	// All tickets + claims for one order (powers the customer order-detail panel).
+	mux.HandleFunc("GET /api/v1/resolutions/order/{orderId}", func(w http.ResponseWriter, r *http.Request) {
+		tickets, claims, err := resolutionSvc.GetOrderResolution(r.Context(), r.PathValue("orderId"))
+		if err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
+		response.Success(w, "order resolution retrieved", map[string]interface{}{"tickets": tickets, "claims": claims})
+	})
+
+	// Tickets owned by the authenticated user.
+	mux.HandleFunc("GET /api/v1/resolutions/my-tickets", func(w http.ResponseWriter, r *http.Request) {
+		tickets, err := resolutionSvc.ListUserTickets(r.Context(), middleware.GetUserID(r.Context()))
+		if err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
+		response.Success(w, "my tickets retrieved", tickets)
+	})
+
+	mux.HandleFunc("GET /api/v1/resolutions/tickets/{id}", func(w http.ResponseWriter, r *http.Request) {
+		ticket, err := resolutionSvc.GetTicketByID(r.Context(), r.PathValue("id"))
 		if err != nil {
 			response.NotFound(w, "ticket not found")
 			return
 		}
 		response.Success(w, "ticket retrieved", ticket)
-	})
-
-	mux.HandleFunc("GET /api/v1/resolutions/tickets", func(w http.ResponseWriter, r *http.Request) {
-		status := r.URL.Query().Get("status")
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		if page < 1 {
-			page = 1
-		}
-		tickets, total, _ := resolutionSvc.ListTickets(r.Context(), status, page, 20)
-		response.Paginated(w, tickets, page, 20, total)
-	})
-
-	mux.HandleFunc("PUT /api/v1/resolutions/tickets/", func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(r.URL.Path, "/")
-		id := parts[len(parts)-1]
-		var req model.UpdateTicketRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			response.BadRequest(w, "invalid body")
-			return
-		}
-		if err := resolutionSvc.UpdateTicket(r.Context(), id, req); err != nil {
-			response.InternalError(w, err.Error())
-			return
-		}
-		response.Success(w, "ticket updated", nil)
 	})
 
 	mux.HandleFunc("POST /api/v1/resolutions/claims", func(w http.ResponseWriter, r *http.Request) {
@@ -137,15 +131,63 @@ func main() {
 		response.Created(w, "claim created", claim)
 	})
 
-	mux.HandleFunc("GET /api/v1/resolutions/claims/", func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(r.URL.Path, "/")
-		id := parts[len(parts)-1]
-		claim, err := resolutionSvc.GetClaimByID(r.Context(), id)
+	mux.HandleFunc("GET /api/v1/resolutions/claims/{id}", func(w http.ResponseWriter, r *http.Request) {
+		claim, err := resolutionSvc.GetClaimByID(r.Context(), r.PathValue("id"))
 		if err != nil {
 			response.NotFound(w, "claim not found")
 			return
 		}
 		response.Success(w, "claim retrieved", claim)
+	})
+
+	// --- Admin endpoints (gateway gates /api/v1/resolutions/admin/ to ADMIN) ---
+	mux.HandleFunc("GET /api/v1/resolutions/admin/tickets", func(w http.ResponseWriter, r *http.Request) {
+		status := r.URL.Query().Get("status")
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		tickets, total, _ := resolutionSvc.ListTickets(r.Context(), status, page, 50)
+		response.Paginated(w, tickets, page, 50, total)
+	})
+
+	mux.HandleFunc("PUT /api/v1/resolutions/admin/tickets/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req model.UpdateTicketRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		if req.AgentID == "" {
+			req.AgentID = middleware.GetUserID(r.Context())
+		}
+		if err := resolutionSvc.UpdateTicket(r.Context(), r.PathValue("id"), req); err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
+		response.Success(w, "ticket updated", nil)
+	})
+
+	mux.HandleFunc("GET /api/v1/resolutions/admin/claims", func(w http.ResponseWriter, r *http.Request) {
+		status := r.URL.Query().Get("status")
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		claims, total, _ := resolutionSvc.ListClaims(r.Context(), status, page, 50)
+		response.Paginated(w, claims, page, 50, total)
+	})
+
+	mux.HandleFunc("PUT /api/v1/resolutions/admin/claims/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req model.UpdateClaimRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		if err := resolutionSvc.UpdateClaim(r.Context(), r.PathValue("id"), req.Status, req.Amount); err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
+		response.Success(w, "claim updated", nil)
 	})
 
 	mux.HandleFunc("GET /api/v1/resolutions/health", func(w http.ResponseWriter, r *http.Request) {

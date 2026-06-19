@@ -104,6 +104,16 @@ func main() {
 		return orderSvc.HandleDeliveryFailed(ctx, evt.OrderID, evt.AttemptNum)
 	})
 
+	// Subscribe to package.picked-up → move order to PICKED_UP
+	consumerGroup.Subscribe(ctx, kafkaBrokers, events.TopicPackagePickedUp, "order-service", func(ctx context.Context, key, value []byte) error {
+		var evt events.PackagePickedUpEvent
+		if err := json.Unmarshal(value, &evt); err != nil {
+			return err
+		}
+		logger.Info(context.Background(), fmt.Sprintf("[Order] Received package.picked-up for AWB=%s", evt.AWB))
+		return orderSvc.HandlePackagePickedUp(ctx, evt.AWB)
+	})
+
 	// Subscribe to package.scanned-at-hub → open last-mile job when it reaches the destination hub
 	consumerGroup.Subscribe(ctx, kafkaBrokers, events.TopicPackageScannedHub, "order-service", func(ctx context.Context, key, value []byte) error {
 		var evt events.PackageScannedAtHubEvent

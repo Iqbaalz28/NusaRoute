@@ -6,6 +6,7 @@ import { apiPost } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { PriceCalculationRequest, PriceCalculationResponse, Order } from "@/lib/types";
 import { CITIES } from "@/lib/cities";
+import { PaymentPanel } from "./PaymentPanel";
 
 type Coords = { lat: number; lon: number };
 
@@ -47,6 +48,7 @@ export const ServicesPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderResult, setOrderResult] = useState<Order | null>(null);
+  const [paid, setPaid] = useState(false);
   const [pickupMode, setPickupMode] = useState<"COURIER" | "SELF_DROPOFF">("COURIER");
 
   const calculate = async () => {
@@ -107,6 +109,7 @@ export const ServicesPage = () => {
   const openCheckout = (service: PriceCalculationResponse) => {
     setSelectedService(service);
     setOrderResult(null);
+    setPaid(false);
     setOrderError(isAuthenticated ? null : "Silakan login terlebih dahulu untuk membuat pesanan.");
     setForm(f => ({
       ...f,
@@ -329,6 +332,19 @@ export const ServicesPage = () => {
                   )}
                   <div className="text-[0.75rem] text-muted mt-2 text-center">Scan QR ini di Konsol Scan Hub untuk merekam pergerakan paket antar-hub.</div>
                 </div>
+
+                {/* Event-driven payment: pay now so the order leaves PENDING_PAYMENT. */}
+                {!paid && orderResult.status === "PENDING_PAYMENT" && (
+                  <div className="mb-6 text-left">
+                    <PaymentPanel orderId={orderResult.id} amount={orderResult.total_cost} onPaid={() => setPaid(true)} />
+                  </div>
+                )}
+                {(paid || orderResult.status !== "PENDING_PAYMENT") && (
+                  <div className="bg-green-50 border border-green-200 rounded-2xl p-3 mb-6 text-[0.85rem] text-green-700 font-semibold text-center">
+                    ✅ Pembayaran selesai — pesanan sedang diproses.
+                  </div>
+                )}
+
                 <button
                   className="bg-primary text-white font-heading font-semibold w-full h-14 rounded-pill hover:bg-primary-hover transition-all"
                   onClick={closeCheckout}

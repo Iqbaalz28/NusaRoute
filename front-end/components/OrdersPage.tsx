@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { apiGet } from "@/lib/api";
 import { Order } from "@/lib/types";
+import { OrderDetailModal } from "./OrderDetailModal";
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -19,28 +20,29 @@ export const OrdersPage = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<{ awb: string; id: string; statusLabel: string } | null>(null);
+  const [detail, setDetail] = useState<{ orderId: string; awb: string } | null>(null);
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const res = await apiGet<PaginatedResponse<Order>>('/api/v1/orders', { requiresAuth: true });
-        // The API returns PaginatedResponse, but our apiGet returns the payload directly if envelope is used
-        // Let's handle both in case apiGet unpacks the 'data' field.
-        const orderData = Array.isArray(res) ? res : (res as any)?.data || [];
-        setOrders(orderData);
-      } catch (err) {
-        console.error("Failed to load orders:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchOrders();
+  const fetchOrders = useCallback(async () => {
+    try {
+      const res = await apiGet<PaginatedResponse<Order>>('/api/v1/orders', { requiresAuth: true });
+      // The API returns PaginatedResponse, but our apiGet returns the payload directly if envelope is used
+      // Let's handle both in case apiGet unpacks the 'data' field.
+      const orderData = Array.isArray(res) ? res : (res as any)?.data || [];
+      setOrders(orderData);
+    } catch (err) {
+      console.error("Failed to load orders:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
   // Use a fallback for destination/service if missing, based on standard format
   const mappedOrders = orders.map(o => {
     return {
       id: o.id.substring(0, 12).toUpperCase(),
+      realId: o.id,
       awb: o.awb,
       date: new Date(o.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
       destination: o.receiver_city || o.receiver_address?.split(',')[0] || "Unknown",
@@ -120,12 +122,20 @@ export const OrdersPage = () => {
                       </span>
                     </td>
                     <td className="p-6">
-                      <button
-                        className="text-primary font-bold text-[0.85rem] hover:underline"
-                        onClick={() => setSelected({ awb: o.awb, id: o.id, statusLabel: o.statusLabel })}
-                      >
-                        Label QR
-                      </button>
+                      <div className="flex gap-3">
+                        <button
+                          className="text-primary font-bold text-[0.85rem] hover:underline"
+                          onClick={() => setDetail({ orderId: o.realId, awb: o.awb })}
+                        >
+                          {o.status === "PENDING_PAYMENT" ? "Bayar / Detail" : "Detail"}
+                        </button>
+                        <button
+                          className="text-muted font-bold text-[0.85rem] hover:underline hover:text-text"
+                          onClick={() => setSelected({ awb: o.awb, id: o.id, statusLabel: o.statusLabel })}
+                        >
+                          Label QR
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -176,6 +186,14 @@ export const OrdersPage = () => {
             })()}
           </div>
         </div>
+      )}
+
+      {detail && (
+        <OrderDetailModal
+          orderId={detail.orderId}
+          awb={detail.awb}
+          onClose={() => { setDetail(null); fetchOrders(); }}
+        />
       )}
     </section>
   );

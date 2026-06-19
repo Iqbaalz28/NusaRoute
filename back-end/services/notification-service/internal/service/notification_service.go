@@ -1,12 +1,14 @@
 package service
 
 import (
-	"fmt"
-	"github.com/nusaroute/pkg/logger"
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nusaroute/pkg/logger"
+	"github.com/nusaroute/services/notification-service/internal/broker"
 	"github.com/nusaroute/services/notification-service/internal/repository"
 )
 
@@ -14,14 +16,18 @@ type NotificationService interface {
 	SendNotification(ctx context.Context, userID, channel, title, message, orderID, awb string) error
 	GetNotifications(ctx context.Context, userID string) ([]repository.NotificationLog, error)
 	MarkAsRead(ctx context.Context, id string) error
+	MarkAllAsRead(ctx context.Context, userID string) error
 }
 
 type notificationService struct {
-	repo repository.NotificationRepository
+	repo   repository.NotificationRepository
+	broker *broker.Broker
 }
 
-func NewNotificationService(repo repository.NotificationRepository) NotificationService {
-	return &notificationService{repo: repo}
+// NewNotificationService takes an optional broker (may be nil in tests) used to
+// push notifications to the recipient in real time over SSE.
+func NewNotificationService(repo repository.NotificationRepository, b *broker.Broker) NotificationService {
+	return &notificationService{repo: repo, broker: b}
 }
 
 func (s *notificationService) SendNotification(ctx context.Context, userID, channel, title, message, orderID, awb string) error {
@@ -39,9 +45,19 @@ func (s *notificationService) SendNotification(ctx context.Context, userID, chan
 	}
 
 	// In production: integrate with Twilio (WhatsApp), Firebase (Push), SMTP (Email)
-	logger.Info(context.Background(), fmt.Sprintf("[Notification] 📨 [%s] %s: %s", channel, title, message))
+	logger.Info(context.Background(), fmt.Sprintf("[Notification] 📨 [%s→%s] %s: %s", channel, userID, title, message))
 
-	return s.repo.InsertLog(ctx, notif)
+	if err := s.repo.InsertLog(ctx, notif); err != nil {
+		return err
+	}
+
+	// Push it live to the recipient's open tabs.
+	if s.broker != nil && userID != "" {
+		if data, err := json.Marshal(notif); err == nil {
+			s.broker.Publish(userID, data)
+		}
+	}
+	return nil
 }
 
 func (s *notificationService) GetNotifications(ctx context.Context, userID string) ([]repository.NotificationLog, error) {
@@ -50,4 +66,8 @@ func (s *notificationService) GetNotifications(ctx context.Context, userID strin
 
 func (s *notificationService) MarkAsRead(ctx context.Context, id string) error {
 	return s.repo.MarkAsRead(ctx, id)
+}
+
+func (s *notificationService) MarkAllAsRead(ctx context.Context, userID string) error {
+	return s.repo.MarkAllAsRead(ctx, userID)
 }

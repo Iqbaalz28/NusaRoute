@@ -1,0 +1,32 @@
+# Mounted into postgres at /docker-entrypoint-initdb.d → runs ONCE on first boot
+# (empty data dir) to create the per-service databases. Mirrors
+# back-end/scripts/init-databases.sql. Per-service TABLES are created later by
+# db-bootstrap.sh (migrations are not auto-applied by the services).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+  namespace: nusaroute
+data:
+  init-databases.sql: |
+    CREATE DATABASE nusaroute_payment;
+    CREATE DATABASE nusaroute_pricing;
+    CREATE DATABASE nusaroute_order;
+    CREATE DATABASE nusaroute_courier;
+    CREATE DATABASE nusaroute_dispatch;
+    CREATE DATABASE nusaroute_hub;
+    CREATE DATABASE nusaroute_resolution;
+    CREATE DATABASE nusaroute_warehouse;
+
+    -- PostGIS for dispatch spatial queries
+    \c nusaroute_dispatch;
+    CREATE EXTENSION IF NOT EXISTS postgis;
+
+    GRANT ALL PRIVILEGES ON DATABASE nusaroute_payment TO nusaroute;
+    GRANT ALL PRIVILEGES ON DATABASE nusaroute_pricing TO nusaroute;
+    GRANT ALL PRIVILEGES ON DATABASE nusaroute_order TO nusaroute;
+    GRANT ALL PRIVILEGES ON DATABASE nusaroute_courier TO nusaroute;
+    GRANT ALL PRIVILEGES ON DATABASE nusaroute_dispatch TO nusaroute;
+    GRANT ALL PRIVILEGES ON DATABASE nusaroute_hub TO nusaroute;
+    GRANT ALL PRIVILEGES ON DATABASE nusaroute_resolution TO nusaroute;
+    GRANT ALL PRIVILEGES ON DATABASE nusaroute_warehouse TO nusaroute;

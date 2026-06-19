@@ -153,6 +153,7 @@ services:
       - TRACKING_SERVICE_URL=http://tracking-service:8008
       - NOTIFICATION_SERVICE_URL=http://notification-service:8009
       - RESOLUTION_SERVICE_URL=http://resolution-service:8010
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8011
     depends_on:
       - user-service
       - payment-service
@@ -164,6 +165,7 @@ services:
       - tracking-service
       - notification-service
       - resolution-service
+      - analytics-service
     networks:
       - nusaroute-net
 
@@ -389,10 +391,33 @@ services:
       - MONGO_URI=mongodb://nusaroute:${MONGO_PASSWORD}@mongodb:27017
       - MONGO_DB=nusaroute_notification
       - KAFKA_BROKERS=kafka:29092
+      - ORDER_SERVICE_URL=http://order-service:8004
     depends_on:
       mongodb:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: analytics-service
+    container_name: nusaroute-analytics-service
+    ports:
+      - "8011:8011"
+    environment:
+      - PORT=8011
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=nusaroute_warehouse
+    depends_on:
+      postgres:
         condition: service_healthy
     networks:
       - nusaroute-net

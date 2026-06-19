@@ -47,6 +47,23 @@ func (m *MockHubRepository) CreateScanLog(ctx context.Context, scan *model.ScanL
 	return nil
 }
 
+func (m *MockHubRepository) ListAllHubs(ctx context.Context) ([]model.Hub, error) {
+	var result []model.Hub
+	for _, h := range m.hubs { result = append(result, *h) }
+	return result, nil
+}
+
+func (m *MockHubRepository) CreateHub(ctx context.Context, h *model.Hub) error {
+	if h.ID == "" { h.ID = "hub-new-id" }
+	m.hubs[h.ID] = h
+	return nil
+}
+
+func (m *MockHubRepository) UpdateHub(ctx context.Context, h *model.Hub) error {
+	m.hubs[h.ID] = h
+	return nil
+}
+
 func (m *MockHubRepository) RecordScan(ctx context.Context, scan *model.ScanLog) error {
 	scan.ID = "scan-ext-id"
 	if scan.ScannedAt.IsZero() { scan.ScannedAt = time.Now() }

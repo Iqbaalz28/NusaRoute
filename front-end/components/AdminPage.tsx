@@ -5,6 +5,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { Order } from "@/lib/types";
+import { AdminHubsManager } from "./AdminHubsManager";
+import { AdminResolutions } from "./AdminResolutions";
 
 const STATUSES = [
   "PENDING_PAYMENT", "READY_FOR_PICKUP", "PICKED_UP", "IN_TRANSIT",
@@ -22,6 +24,7 @@ const emptyForm = {
 
 export const AdminPage = () => {
   const { isAuthenticated } = useAuth();
+  const [tab, setTab] = useState<"orders" | "hubs" | "resolusi">("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,19 +113,40 @@ export const AdminPage = () => {
 
   return (
     <section className="animate-fade-up pt-32 px-8 pb-24 max-w-[1200px] mx-auto min-h-screen">
-      <div className="flex flex-col md:flex-row justify-between md:items-center gap-6 mb-8">
+      <div className="flex flex-col md:flex-row justify-between md:items-center gap-6 mb-6">
         <div>
-          <h1 className="text-[2.5rem] font-bold leading-tight">Admin — Kelola Pesanan</h1>
-          <p className="text-muted">Lihat semua pesanan, buat baru (AWB otomatis), ubah status, atau batalkan.</p>
+          <h1 className="text-[2.5rem] font-bold leading-tight">Admin — {tab === "orders" ? "Kelola Pesanan" : tab === "hubs" ? "Kelola Hub" : "Resolusi & Klaim"}</h1>
+          <p className="text-muted">{tab === "orders" ? "Lihat semua pesanan, buat baru (AWB otomatis), ubah status, atau batalkan." : tab === "hubs" ? "Tambah, ubah, dan aktif/nonaktifkan hub sortir." : "Tangani tiket masalah & setujui/cairkan klaim asuransi."}</p>
         </div>
-        <button
-          className="bg-primary text-white font-heading font-semibold px-6 py-3 rounded-pill hover:bg-primary-hover transition-all shrink-0"
-          onClick={() => { setCreateOpen(true); setCreatedAwb(null); setCreateErr(null); }}
-        >
-          + Buat Pesanan
-        </button>
+        {tab === "orders" && (
+          <button
+            className="bg-primary text-white font-heading font-semibold px-6 py-3 rounded-pill hover:bg-primary-hover transition-all shrink-0"
+            onClick={() => { setCreateOpen(true); setCreatedAwb(null); setCreateErr(null); }}
+          >
+            + Buat Pesanan
+          </button>
+        )}
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex gap-2 p-1.5 bg-border/30 rounded-2xl w-fit mb-8">
+        {([["orders", "📦 Pesanan"], ["hubs", "🏢 Hub"], ["resolusi", "🛟 Resolusi"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            className={`px-5 py-2 rounded-xl text-[0.9rem] font-bold transition-all ${tab === id ? "bg-surface text-text shadow-sm" : "text-muted hover:text-text"}`}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "hubs" ? (
+        <AdminHubsManager />
+      ) : tab === "resolusi" ? (
+        <AdminResolutions />
+      ) : (
+      <>
       <div className="flex gap-2 mb-6">
         <input
           className={inputClass}
@@ -193,6 +217,8 @@ export const AdminPage = () => {
         <span className="text-muted font-semibold">Halaman {page}</span>
         <button className="px-4 py-2 rounded-xl border border-border font-semibold disabled:opacity-40" disabled={orders.length < PER_PAGE || loading} onClick={() => setPage((p) => p + 1)}>Berikutnya →</button>
       </div>
+      </>
+      )}
 
       {/* QR label modal */}
       {qrOrder && (

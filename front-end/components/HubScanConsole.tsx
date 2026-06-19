@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
-import { Hub } from "@/lib/types";
+import { Hub, Order } from "@/lib/types";
 
 type ScanType = "inbound" | "sort" | "outbound";
 
@@ -122,7 +122,19 @@ export const HubScanConsole = () => {
     try {
       await apiPost(`/api/v1/hub/scan/${type}`, { awb: awb.trim(), hub_id: hubId, operator_id: operator }, { requiresAuth: true });
       const hubName = hubs.find((h) => h.id === hubId)?.name || hubId;
-      pushLog(`${SCAN_META[type].label} OK — ${awb.trim()} @ ${hubName}`, true);
+
+      // Enrich the log with routing context from the order (origin/dest hub).
+      let suffix = "";
+      try {
+        const order = await apiGet<Order>(`/api/v1/orders/awb/${awb.trim()}`, { requiresAuth: true });
+        if (type === "outbound" && order?.dest_hub_name && order.dest_hub_name !== hubName) {
+          suffix = `, sedang menuju ${order.dest_hub_name}`;
+        } else if (type === "inbound" && order?.dest_hub_name === hubName) {
+          suffix = " (hub tujuan akhir — siap last-mile)";
+        }
+      } catch { /* non-fatal: log without routing context */ }
+
+      pushLog(`${SCAN_META[type].label} OK — ${awb.trim()} @ ${hubName}${suffix}`, true);
       loadInventory(hubId); // a scan changes what's inside the hub
     } catch (err: any) {
       pushLog(`${SCAN_META[type].label} gagal: ${err.message || "error"}`, false);

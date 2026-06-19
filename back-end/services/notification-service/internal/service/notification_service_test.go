@@ -42,9 +42,18 @@ func (m *MockNotificationRepository) MarkAsRead(ctx context.Context, id string) 
 	return errors.New("not found")
 }
 
+func (m *MockNotificationRepository) MarkAllAsRead(ctx context.Context, userID string) error {
+	for _, l := range m.logs {
+		if l.UserID == userID {
+			l.IsRead = true
+		}
+	}
+	return nil
+}
+
 func TestSendNotification_Success(t *testing.T) {
 	repo := NewMockNotificationRepo()
-	svc := service.NewNotificationService(repo)
+	svc := service.NewNotificationService(repo, nil)
 
 	err := svc.SendNotification(context.Background(), "user-1", "EMAIL", "Test Title", "Test Message", "ord-1", "AWB123")
 	if err != nil {
@@ -62,7 +71,7 @@ func TestSendNotification_Success(t *testing.T) {
 
 func TestMarkAsRead(t *testing.T) {
 	repo := NewMockNotificationRepo()
-	svc := service.NewNotificationService(repo)
+	svc := service.NewNotificationService(repo, nil)
 
 	svc.SendNotification(context.Background(), "user-1", "PUSH", "Test", "Message", "ord-1", "AWB123")
 	

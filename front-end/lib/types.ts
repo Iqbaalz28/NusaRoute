@@ -10,6 +10,19 @@ export interface Hub {
   is_active: boolean;
 }
 
+export interface NotificationItem {
+  id: string;
+  user_id: string;
+  channel: string;
+  title: string;
+  message: string;
+  order_id?: string;
+  awb?: string;
+  status: string;
+  is_read: boolean;
+  created_at: string;
+}
+
 export interface ServiceInfo {
   code: string;
   name: string;
@@ -100,6 +113,8 @@ export interface Order {
   height_cm: number;
   shipping_cost: number;
   total_cost: number;
+  is_insured?: boolean;
+  insured_value?: number;
   // Routing: nearest sortation hubs to sender (origin) and receiver (destination).
   origin_hub_code?: string;
   origin_hub_name?: string;

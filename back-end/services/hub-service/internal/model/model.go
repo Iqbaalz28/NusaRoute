@@ -25,6 +25,19 @@ type ScanLog struct {
 	ScannedAt  time.Time `json:"scanned_at" db:"scanned_at"`
 }
 
+// HubUpsertRequest is the admin payload for creating/updating a hub. IsActive is a
+// pointer so an update can leave it unchanged (nil) vs. explicitly set false.
+type HubUpsertRequest struct {
+	Name     string  `json:"name"`
+	Code     string  `json:"code"`
+	City     string  `json:"city"`
+	Province string  `json:"province"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
+	Type     string  `json:"type"`
+	IsActive *bool   `json:"is_active"`
+}
+
 type ScanRequest struct {
 	AWB        string `json:"awb"`
 	OrderID    string `json:"order_id"`

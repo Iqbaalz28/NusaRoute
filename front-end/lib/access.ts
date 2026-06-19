@@ -17,6 +17,7 @@ const PAGE_ACCESS: Record<string, PageAccess> = {
   orders: { requiresAuth: true },
   courier: { roles: ["COURIER", "ADMIN"] },
   admin: { roles: ["ADMIN"] },
+  analytics: { roles: ["ADMIN"] },
 };
 
 export function canAccessPage(pageId: string, isAuthenticated: boolean, role?: string): boolean {

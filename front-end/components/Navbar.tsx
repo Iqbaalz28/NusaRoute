@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/lib/AuthContext";
 import { canAccessPage } from "@/lib/access";
+import { NotificationBell } from "./NotificationBell";
 
 interface NavbarProps {
   activePage: string;
@@ -33,6 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activePage, setActivePage, onLog
     { id: "courier", label: "Kurir" },
     { id: "hubs", label: "Hub" },
     { id: "admin", label: "Admin" },
+    { id: "analytics", label: "Analitik" },
   ].filter((link) => canAccessPage(link.id, isAuthenticated, user?.role));
 
   return (
@@ -61,6 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activePage, setActivePage, onLog
           ))}
           {isAuthenticated ? (
             <div className="flex items-center gap-3 max-md:flex-col max-md:items-stretch">
+              <div className="max-md:self-end"><NotificationBell /></div>
               <span className="flex items-center gap-2 font-body text-[0.9rem] font-semibold text-text whitespace-nowrap">
                 <span className="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center font-heading font-bold uppercase">
                   {displayName.charAt(0)}

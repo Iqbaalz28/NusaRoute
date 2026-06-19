@@ -27,6 +27,7 @@ type NotificationRepository interface {
 	InsertLog(ctx context.Context, log NotificationLog) error
 	GetLogsByUserID(ctx context.Context, userID string, limit int64) ([]NotificationLog, error)
 	MarkAsRead(ctx context.Context, id string) error
+	MarkAllAsRead(ctx context.Context, userID string) error
 }
 
 type notificationRepository struct {
@@ -63,5 +64,11 @@ func (r *notificationRepository) GetLogsByUserID(ctx context.Context, userID str
 
 func (r *notificationRepository) MarkAsRead(ctx context.Context, id string) error {
 	_, err := r.db.Collection("notification_logs").UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"is_read": true}})
+	return err
+}
+
+func (r *notificationRepository) MarkAllAsRead(ctx context.Context, userID string) error {
+	_, err := r.db.Collection("notification_logs").UpdateMany(ctx,
+		bson.M{"user_id": userID, "is_read": false}, bson.M{"$set": bson.M{"is_read": true}})
 	return err
 }

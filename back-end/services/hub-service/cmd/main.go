@@ -158,6 +158,41 @@ func main() {
 		}
 		response.Success(w, "hubs retrieved", hubs)
 	})
+	// --- Admin hub management (gated to ADMIN at the gateway) ---
+	mux.HandleFunc("GET /api/v1/hub/manage", func(w http.ResponseWriter, r *http.Request) {
+		hubs, err := hubSvc.ListAllHubs(r.Context())
+		if err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
+		response.Success(w, "all hubs retrieved", hubs)
+	})
+	mux.HandleFunc("POST /api/v1/hub/manage", func(w http.ResponseWriter, r *http.Request) {
+		var req model.HubUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		hub, err := hubSvc.CreateHub(r.Context(), req)
+		if err != nil {
+			response.BadRequest(w, err.Error())
+			return
+		}
+		response.Created(w, "hub created", hub)
+	})
+	mux.HandleFunc("PUT /api/v1/hub/manage/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req model.HubUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		hub, err := hubSvc.UpdateHub(r.Context(), r.PathValue("id"), req)
+		if err != nil {
+			response.BadRequest(w, err.Error())
+			return
+		}
+		response.Success(w, "hub updated", hub)
+	})
 	mux.HandleFunc("GET /api/v1/hub/stats", func(w http.ResponseWriter, r *http.Request) {
 		activeHubs, totalCities, err := hubSvc.GetDashboardStats(r.Context())
 		if err != nil {

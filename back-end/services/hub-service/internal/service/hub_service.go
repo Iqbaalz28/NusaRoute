@@ -20,6 +20,9 @@ type HubService interface {
 	GetManifest(ctx context.Context, hubID string) ([]model.ScanLog, error)
 	GetCurrentInventory(ctx context.Context, hubID string) ([]model.ScanLog, error)
 	ListHubs(ctx context.Context) ([]model.Hub, error)
+	ListAllHubs(ctx context.Context) ([]model.Hub, error)
+	CreateHub(ctx context.Context, req model.HubUpsertRequest) (*model.Hub, error)
+	UpdateHub(ctx context.Context, id string, req model.HubUpsertRequest) (*model.Hub, error)
 	GetDashboardStats(ctx context.Context) (int64, int64, error)
 }
 
@@ -81,6 +84,62 @@ func (s *hubService) GetCurrentInventory(ctx context.Context, hubID string) ([]m
 
 func (s *hubService) ListHubs(ctx context.Context) ([]model.Hub, error) {
 	return s.repo.ListHubs(ctx)
+}
+
+func (s *hubService) ListAllHubs(ctx context.Context) ([]model.Hub, error) {
+	return s.repo.ListAllHubs(ctx)
+}
+
+func (s *hubService) CreateHub(ctx context.Context, req model.HubUpsertRequest) (*model.Hub, error) {
+	if req.Name == "" || req.Code == "" || req.City == "" {
+		return nil, errors.New("name, code, and city are required")
+	}
+	hub := &model.Hub{
+		Name: req.Name, Code: req.Code, City: req.City, Province: req.Province,
+		Lat: req.Lat, Lng: req.Lng, Type: req.Type, IsActive: true,
+	}
+	if hub.Type == "" {
+		hub.Type = "SORTATION"
+	}
+	if req.IsActive != nil {
+		hub.IsActive = *req.IsActive
+	}
+	if err := s.repo.CreateHub(ctx, hub); err != nil {
+		return nil, err
+	}
+	logger.Info(context.Background(), fmt.Sprintf("[Hub] ➕ Created hub %s (%s)", hub.Name, hub.Code))
+	return hub, nil
+}
+
+func (s *hubService) UpdateHub(ctx context.Context, id string, req model.HubUpsertRequest) (*model.Hub, error) {
+	hub, err := s.repo.GetHubByID(ctx, id)
+	if err != nil {
+		return nil, errors.New("hub not found")
+	}
+	if req.Name != "" {
+		hub.Name = req.Name
+	}
+	if req.Code != "" {
+		hub.Code = req.Code
+	}
+	if req.City != "" {
+		hub.City = req.City
+	}
+	if req.Province != "" {
+		hub.Province = req.Province
+	}
+	if req.Type != "" {
+		hub.Type = req.Type
+	}
+	hub.Lat, hub.Lng = req.Lat, req.Lng
+	if req.IsActive != nil {
+		hub.IsActive = *req.IsActive
+	}
+	if err := s.repo.UpdateHub(ctx, hub); err != nil {
+		return nil, err
+	}
+	logger.Info(context.Background(), fmt.Sprintf("[Hub] ✏️ Updated hub %s (%s) active=%v", hub.Name, hub.Code, hub.IsActive))
+	return hub, nil
 }
 
 func (s *hubService) GetDashboardStats(ctx context.Context) (int64, int64, error) {

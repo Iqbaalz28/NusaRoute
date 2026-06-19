@@ -62,3 +62,12 @@ documentations.md
 .next/
 out/
 build/
+
+# Azure / Terraform / k8s secrets — never commit these
+infrastructure/**/.terraform/
+infrastructure/**/*.tfstate
+infrastructure/**/*.tfstate.*
+infrastructure/**/*.tfvars
+infrastructure/**/aks.kubeconfig
+*.kubeconfig
+back-end/deployments/azure/k8s/10-secrets.yaml

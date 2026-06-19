@@ -27,6 +27,7 @@ func (h *OrderHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/orders/status", h.UpdateStatus)
 	mux.HandleFunc("GET /api/v1/orders/stats", h.GetDashboardStats)
 	mux.HandleFunc("GET /api/v1/orders/volume", h.GetVolumeStats)
+	mux.HandleFunc("GET /api/v1/orders/awb/{awb}", h.GetOrderByAWB)
 	mux.HandleFunc("GET /api/v1/orders/", h.GetOrder)
 	mux.HandleFunc("PUT /api/v1/orders/", h.CancelOrder)
 	mux.HandleFunc("GET /api/v1/orders/health", h.Health)
@@ -48,6 +49,15 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	order, err := h.svc.CreateOrder(r.Context(), userID, req)
 	if err != nil { response.BadRequest(w, err.Error()); return }
 	response.Created(w, "order created", order)
+}
+
+func (h *OrderHandler) GetOrderByAWB(w http.ResponseWriter, r *http.Request) {
+	awb := r.PathValue("awb")
+	if awb == "" { response.BadRequest(w, "awb required"); return }
+
+	order, err := h.svc.GetOrderByAWB(r.Context(), awb)
+	if err != nil { response.NotFound(w, "order not found"); return }
+	response.Success(w, "order retrieved", order)
 }
 
 func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,11 +12,20 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// env returns the environment variable or a fallback default, so the seeder
+// works unchanged locally (docker-compose) and against a port-forwarded AKS DB.
+func env(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func main() {
-	dbUser := "nusaroute"
-	dbPass := "nusaroute_secret"
-	dbHost := "localhost"
-	dbPort := "5433"
+	dbUser := env("DB_USER", "nusaroute")
+	dbPass := env("DB_PASSWORD", "nusaroute_secret")
+	dbHost := env("DB_HOST", "localhost")
+	dbPort := env("DB_PORT", "5433")
 
 	// Connect to Order DB
 	orderDB, err := sqlx.Connect("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=nusaroute_order sslmode=disable", dbHost, dbPort, dbUser, dbPass))

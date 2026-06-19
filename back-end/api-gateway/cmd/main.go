@@ -93,6 +93,7 @@ func main() {
 		{Prefix: "/api/v1/tracking", TargetURL: getEnv("TRACKING_SERVICE_URL", "http://localhost:8008"), Public: true},
 		{Prefix: "/api/v1/notifications", TargetURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8009"), Public: false},
 		{Prefix: "/api/v1/resolutions", TargetURL: getEnv("RESOLUTION_SERVICE_URL", "http://localhost:8010"), Public: false},
+		{Prefix: "/api/v1/analytics", TargetURL: getEnv("ANALYTICS_SERVICE_URL", "http://localhost:8011"), Public: false, Roles: []string{"ADMIN"}},
 	}
 
 	redisClient, err := database.ConnectRedis(database.RedisConfig{
@@ -259,6 +260,19 @@ func main() {
 	// scans through JWT + role enforcement.
 	mux.Handle("/api/v1/hub/scan/", mw.JWTAuth(jwtSecret)(mw.RequireRole("HUB_OPERATOR", "ADMIN")(
 		makeProxyHandler(getEnv("HUB_SERVICE_URL", "http://localhost:8007")))))
+
+	// Hub management (create/update/list-all incl inactive) is ADMIN-only. More
+	// specific than /api/v1/hub so ServeMux routes it here for role enforcement.
+	hubManage := mw.JWTAuth(jwtSecret)(mw.RequireRole("ADMIN")(
+		makeProxyHandler(getEnv("HUB_SERVICE_URL", "http://localhost:8007"))))
+	mux.Handle("/api/v1/hub/manage/", hubManage)
+	mux.Handle("/api/v1/hub/manage", hubManage)
+
+	// Resolution admin endpoints (ticket triage, claim approval/payout) are
+	// ADMIN-only; more specific than the JWT-only /api/v1/resolutions prefix.
+	resolutionAdmin := mw.JWTAuth(jwtSecret)(mw.RequireRole("ADMIN")(
+		makeProxyHandler(getEnv("RESOLUTION_SERVICE_URL", "http://localhost:8010"))))
+	mux.Handle("/api/v1/resolutions/admin/", resolutionAdmin)
 
 	// Admin-only order endpoints. These are more specific than the generic
 	// /api/v1/orders prefix (which customers use to create/list/cancel their own
