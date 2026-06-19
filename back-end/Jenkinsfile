@@ -28,13 +28,14 @@ pipeline {
         // ========================================
         stage('Unit Tests') {
             agent {
-                docker { image "golang:${GO_VERSION}-alpine" }
+                docker {
+                    image "golang:${GO_VERSION}-alpine"
+                    args '-e HOME=/tmp -e GOPATH=/tmp/go -e GOCACHE=/tmp/go-cache'
+                }
             }
             steps {
                 dir('back-end') {
                     sh '''
-                        export HOME=/tmp
-                        export GOPATH=/tmp/go
                         set -e
                         echo "Running unit tests for all services..."
                         
@@ -74,13 +75,14 @@ pipeline {
         // ========================================
         stage('Lint & Vet') {
             agent {
-                docker { image "golang:${GO_VERSION}-alpine" }
+                docker {
+                    image "golang:${GO_VERSION}-alpine"
+                    args '-e HOME=/tmp -e GOPATH=/tmp/go -e GOCACHE=/tmp/go-cache'
+                }
             }
             steps {
                 dir('back-end') {
                     sh '''
-                        export HOME=/tmp
-                        export GOPATH=/tmp/go
                         set -e
                         echo "Running go vet..."
                         
