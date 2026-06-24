@@ -13,9 +13,14 @@ import (
 type HubRepository interface {
 	GetHubByID(ctx context.Context, id string) (*model.Hub, error)
 	ListHubs(ctx context.Context) ([]model.Hub, error)
+	ListAllHubs(ctx context.Context) ([]model.Hub, error)
+	CreateHub(ctx context.Context, h *model.Hub) error
+	UpdateHub(ctx context.Context, h *model.Hub) error
 	CreateScanLog(ctx context.Context, scan *model.ScanLog, outboxTopic string, outboxPayload interface{}) error
+	RecordScan(ctx context.Context, scan *model.ScanLog) error
 	GetScansByAWB(ctx context.Context, awb string) ([]model.ScanLog, error)
 	GetManifest(ctx context.Context, hubID string, date time.Time) ([]model.ScanLog, error)
+	GetCurrentInventory(ctx context.Context, hubID string) ([]model.ScanLog, error)
 	GetDashboardStats(ctx context.Context) (activeHubs int64, totalCities int64, err error)
 }
 
@@ -33,6 +38,32 @@ func (r *hubRepo) ListHubs(ctx context.Context) ([]model.Hub, error) {
 	var hubs []model.Hub
 	err := r.db.SelectContext(ctx, &hubs, "SELECT * FROM hubs WHERE is_active = true ORDER BY name")
 	return hubs, err
+}
+
+// ListAllHubs returns every hub, active or not — for admin management.
+func (r *hubRepo) ListAllHubs(ctx context.Context) ([]model.Hub, error) {
+	var hubs []model.Hub
+	err := r.db.SelectContext(ctx, &hubs, "SELECT * FROM hubs ORDER BY is_active DESC, name")
+	return hubs, err
+}
+
+func (r *hubRepo) CreateHub(ctx context.Context, h *model.Hub) error {
+	if h.ID == "" {
+		h.ID = uuid.New().String()
+	}
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO hubs (id, name, code, city, province, lat, lng, type, is_active)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		h.ID, h.Name, h.Code, h.City, h.Province, h.Lat, h.Lng, h.Type, h.IsActive)
+	return err
+}
+
+func (r *hubRepo) UpdateHub(ctx context.Context, h *model.Hub) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE hubs SET name=$1, code=$2, city=$3, province=$4, lat=$5, lng=$6, type=$7, is_active=$8
+		 WHERE id=$9`,
+		h.Name, h.Code, h.City, h.Province, h.Lat, h.Lng, h.Type, h.IsActive, h.ID)
+	return err
 }
 
 func (r *hubRepo) CreateScanLog(ctx context.Context, scan *model.ScanLog, outboxTopic string, outboxPayload interface{}) error {
@@ -62,6 +93,21 @@ func (r *hubRepo) CreateScanLog(ctx context.Context, scan *model.ScanLog, outbox
 	return tx.Commit()
 }
 
+// RecordScan inserts a scan log WITHOUT emitting an outbox event. Used to mirror
+// scans produced by other services (e.g. dispatch's last-mile DEPARTED when a
+// courier collects from the hub) so the hub's current inventory stays accurate.
+func (r *hubRepo) RecordScan(ctx context.Context, scan *model.ScanLog) error {
+	scan.ID = uuid.New().String()
+	if scan.ScannedAt.IsZero() {
+		scan.ScannedAt = time.Now()
+	}
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO scan_logs (id, awb, order_id, hub_id, scan_type, operator_id, note, scanned_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		scan.ID, scan.AWB, scan.OrderID, scan.HubID, scan.ScanType, scan.OperatorID, scan.Note, scan.ScannedAt)
+	return err
+}
+
 func (r *hubRepo) GetScansByAWB(ctx context.Context, awb string) ([]model.ScanLog, error) {
 	var scans []model.ScanLog
 	err := r.db.SelectContext(ctx, &scans, "SELECT * FROM scan_logs WHERE awb = $1 ORDER BY scanned_at", awb)
@@ -75,6 +121,24 @@ func (r *hubRepo) GetManifest(ctx context.Context, hubID string, date time.Time)
 	err := r.db.SelectContext(ctx, &scans,
 		"SELECT * FROM scan_logs WHERE hub_id = $1 AND scanned_at >= $2 AND scanned_at < $3 ORDER BY scanned_at",
 		hubID, startOfDay, endOfDay)
+	return scans, err
+}
+
+// GetCurrentInventory returns the packages physically inside a hub right now:
+// for each AWB, the most recent scan at that hub, kept only when that latest scan
+// is not a DEPARTED (i.e. it arrived/was sorted but hasn't left yet).
+func (r *hubRepo) GetCurrentInventory(ctx context.Context, hubID string) ([]model.ScanLog, error) {
+	var scans []model.ScanLog
+	err := r.db.SelectContext(ctx, &scans,
+		`SELECT * FROM (
+			SELECT DISTINCT ON (awb) *
+			FROM scan_logs
+			WHERE hub_id = $1
+			ORDER BY awb, scanned_at DESC
+		) latest
+		WHERE scan_type <> 'DEPARTED'
+		ORDER BY scanned_at DESC`,
+		hubID)
 	return scans, err
 }
 

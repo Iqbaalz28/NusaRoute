@@ -7,10 +7,49 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
+	"strconv"
 	"time"
 
 	kafkago "github.com/segmentio/kafka-go"
 )
+
+// ensureTopic creates the topic if it does not already exist (idempotent).
+// Without this, a consumer that starts before any producer has created the
+// topic attaches to nothing and silently never receives messages.
+func ensureTopic(brokers []string, topic string) {
+	if len(brokers) == 0 || topic == "" {
+		return
+	}
+	conn, err := kafkago.Dial("tcp", brokers[0])
+	if err != nil {
+		log.Printf("[Kafka] ensureTopic dial failed for %s: %v", topic, err)
+		return
+	}
+	defer conn.Close()
+
+	controller, err := conn.Controller()
+	if err != nil {
+		log.Printf("[Kafka] ensureTopic controller lookup failed for %s: %v", topic, err)
+		return
+	}
+	ctrlConn, err := kafkago.Dial("tcp", net.JoinHostPort(controller.Host, strconv.Itoa(controller.Port)))
+	if err != nil {
+		log.Printf("[Kafka] ensureTopic controller dial failed for %s: %v", topic, err)
+		return
+	}
+	defer ctrlConn.Close()
+
+	if err := ctrlConn.CreateTopics(kafkago.TopicConfig{
+		Topic:             topic,
+		NumPartitions:     1,
+		ReplicationFactor: 1,
+	}); err != nil {
+		log.Printf("[Kafka] ensureTopic create failed for %s: %v", topic, err)
+		return
+	}
+	log.Printf("[Kafka] ensureTopic OK: %s", topic)
+}
 
 // DLQTopicName is the Dead Letter Queue topic for failed events.
 const DLQTopicName = "nusaroute.dlq"
@@ -77,6 +116,10 @@ type Consumer struct {
 
 // NewConsumer creates a new Kafka consumer for a specific topic and group.
 func NewConsumer(brokers []string, topic string, groupID string) *Consumer {
+	// Make sure the topic exists so the reader actually attaches to it even when
+	// this consumer starts before any producer has published to the topic.
+	ensureTopic(brokers, topic)
+
 	r := kafkago.NewReader(kafkago.ReaderConfig{
 		Brokers:        brokers,
 		Topic:          topic,

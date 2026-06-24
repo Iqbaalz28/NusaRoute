@@ -17,8 +17,12 @@ type ResolutionRepository interface {
 	GetTicketsByOrderID(ctx context.Context, orderID string) ([]model.Ticket, error)
 	UpdateTicket(ctx context.Context, id string, req model.UpdateTicketRequest, outboxTopic string, outboxPayload interface{}) error
 	ListTickets(ctx context.Context, status string, page, perPage int) ([]model.Ticket, int64, error)
+	ListTicketsByUser(ctx context.Context, userID string) ([]model.Ticket, error)
 	CreateClaim(ctx context.Context, c *model.Claim) error
 	GetClaimByID(ctx context.Context, id string) (*model.Claim, error)
+	GetClaimsByOrderID(ctx context.Context, orderID string) ([]model.Claim, error)
+	ListClaims(ctx context.Context, status string, page, perPage int) ([]model.Claim, int64, error)
+	UpdateClaim(ctx context.Context, id, status string, amount float64) error
 }
 
 type resolutionRepo struct{ db *sqlx.DB }
@@ -127,6 +131,49 @@ func (r *resolutionRepo) ListTickets(ctx context.Context, status string, page, p
 			perPage, offset)
 	}
 	return tickets, total, nil
+}
+
+func (r *resolutionRepo) ListTicketsByUser(ctx context.Context, userID string) ([]model.Ticket, error) {
+	var tickets []model.Ticket
+	err := r.db.SelectContext(ctx, &tickets,
+		"SELECT * FROM tickets WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100", userID)
+	return tickets, err
+}
+
+func (r *resolutionRepo) GetClaimsByOrderID(ctx context.Context, orderID string) ([]model.Claim, error) {
+	var claims []model.Claim
+	err := r.db.SelectContext(ctx, &claims,
+		"SELECT * FROM claims WHERE order_id = $1 ORDER BY created_at DESC", orderID)
+	return claims, err
+}
+
+func (r *resolutionRepo) ListClaims(ctx context.Context, status string, page, perPage int) ([]model.Claim, int64, error) {
+	offset := (page - 1) * perPage
+	var total int64
+	var claims []model.Claim
+	if status != "" {
+		r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM claims WHERE status = $1", status)
+		err := r.db.SelectContext(ctx, &claims,
+			"SELECT * FROM claims WHERE status = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3", status, perPage, offset)
+		return claims, total, err
+	}
+	r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM claims")
+	err := r.db.SelectContext(ctx, &claims,
+		"SELECT * FROM claims ORDER BY created_at DESC LIMIT $1 OFFSET $2", perPage, offset)
+	return claims, total, err
+}
+
+// UpdateClaim sets a claim's status (and payout amount); stamps approved_at when
+// the claim is APPROVED or PAID. The approve flag is precomputed so the status
+// parameter isn't deduced as two conflicting types in one statement.
+func (r *resolutionRepo) UpdateClaim(ctx context.Context, id, status string, amount float64) error {
+	approve := status == "APPROVED" || status == "PAID"
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE claims SET status = $1, amount = $2,
+		    approved_at = CASE WHEN $3 THEN now() ELSE approved_at END
+		 WHERE id = $4`,
+		status, amount, approve, id)
+	return err
 }
 
 func (r *resolutionRepo) CreateClaim(ctx context.Context, c *model.Claim) error {

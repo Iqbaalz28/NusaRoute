@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,11 +12,20 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// env returns the environment variable or a fallback default, so the seeder
+// works unchanged locally (docker-compose) and against a port-forwarded AKS DB.
+func env(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func main() {
-	dbUser := "nusaroute"
-	dbPass := "password123"
-	dbHost := "localhost"
-	dbPort := "5432"
+	dbUser := env("DB_USER", "nusaroute")
+	dbPass := env("DB_PASSWORD", "nusaroute_secret")
+	dbHost := env("DB_HOST", "localhost")
+	dbPort := env("DB_PORT", "5433")
 
 	// Connect to Order DB
 	orderDB, err := sqlx.Connect("postgres", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=nusaroute_order sslmode=disable", dbHost, dbPort, dbUser, dbPass))
@@ -41,8 +51,8 @@ func main() {
 	log.Println("Seeding Hub Data...")
 	seedHubs(hubDB)
 
-	log.Println("Seeding Courier Data...")
-	seedCouriers(courierDB)
+	// log.Println("Seeding Courier Data...")
+	// seedCouriers(courierDB)
 
 	log.Println("Seeding Order Data...")
 	seedOrders(orderDB)
@@ -50,18 +60,12 @@ func main() {
 	log.Println("✅ Real data seeded successfully!")
 }
 
+// seedHubs is intentionally a no-op: the canonical 8 hubs (with REAL coordinates)
+// are seeded by hub-service migration 001_create_tables.sql. The previous version
+// inserted duplicate "-02" hubs with bogus coordinates (all clustered near the
+// Java Sea), which corrupted nearest-hub routing — removed.
 func seedHubs(db *sqlx.DB) {
-	cities := []string{"Jakarta", "Bandung", "Surabaya", "Medan", "Makassar", "Bali", "Semarang", "Yogyakarta"}
-	for i, city := range cities {
-		_, err := db.Exec(`
-			INSERT INTO hubs (id, name, city, address, location_lat, location_lng, capacity, current_load, is_active)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			ON CONFLICT (id) DO NOTHING
-		`, fmt.Sprintf("hub-%d", i), "Hub "+city, city, "Jl. Utama "+city, -6.2+float64(i)*0.1, 106.8+float64(i)*0.1, 10000, 500, true)
-		if err != nil {
-			log.Printf("Error seeding hub: %v", err)
-		}
-	}
+	log.Println("  (hubs seeded by hub-service migration; skipping)")
 }
 
 func seedCouriers(db *sqlx.DB) {
@@ -80,22 +84,48 @@ func seedCouriers(db *sqlx.DB) {
 func seedOrders(db *sqlx.DB) {
 	now := time.Now()
 	statuses := []string{"DELIVERED", "IN_TRANSIT", "PENDING_PAYMENT", "OUT_FOR_DELIVERY"}
-	
+
 	for i := 0; i < 300; i++ {
 		// Random past date within 7 days
 		daysAgo := rand.Intn(7)
 		createdAt := now.AddDate(0, 0, -daysAgo).Add(time.Duration(-rand.Intn(24)) * time.Hour)
-		
+
 		status := statuses[rand.Intn(len(statuses))]
 		if daysAgo > 2 {
 			status = "DELIVERED" // Older orders are likely delivered
 		}
 
+		cost := 15000 + rand.Intn(50000)
+		weight := 1.0 + rand.Float64()*5.0
 		_, err := db.Exec(`
-			INSERT INTO orders (id, awb, user_id, status, service_type, sender_name, receiver_name, shipping_cost, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			INSERT INTO orders (
+				id, awb, user_id, status, service_type,
+				sender_name, sender_phone, sender_address,
+				receiver_name, receiver_phone, receiver_address,
+				shipping_cost, total_cost, weight_kg,
+				created_at, updated_at, item_description
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 			ON CONFLICT (id) DO NOTHING
-		`, uuid.New().String(), fmt.Sprintf("NR%08d", rand.Intn(100000000)), uuid.New().String(), status, "REGULAR", "Sender "+fmt.Sprint(i), "Receiver "+fmt.Sprint(i), 15000+rand.Intn(50000), createdAt, createdAt)
+		`,
+			uuid.New().String(),
+			fmt.Sprintf("NR%08d", rand.Intn(100000000)),
+			uuid.New().String(),
+			status,
+			"REGULAR",
+			"Sender "+fmt.Sprint(i),
+			"08123456789",
+			"Jl. Sender Address "+fmt.Sprint(i),
+			"Receiver "+fmt.Sprint(i),
+			"08987654321",
+			"Jl. Receiver Address "+fmt.Sprint(i),
+			cost,
+			cost,
+			weight,
+			createdAt,
+			createdAt,
+			"Barang Kiriman",
+		)
 		if err != nil {
 			log.Printf("Error seeding order: %v", err)
 		}

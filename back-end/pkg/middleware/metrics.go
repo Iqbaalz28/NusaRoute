@@ -61,6 +61,14 @@ func (rw *metricsResponseWriter) Write(b []byte) (int, error) {
 	return rw.ResponseWriter.Write(b)
 }
 
+// Flush propagates to the underlying writer so SSE/streaming handlers keep working
+// through this wrapper.
+func (rw *metricsResponseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // Metrics is a middleware that captures HTTP metrics.
 func Metrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

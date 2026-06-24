@@ -19,7 +19,9 @@ import (
 	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/middleware"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/services/order-service/internal/handler"
+	"github.com/nusaroute/services/order-service/internal/hubs"
 	"github.com/nusaroute/services/order-service/internal/repository"
 	"github.com/nusaroute/services/order-service/internal/service"
 )
@@ -53,13 +55,17 @@ func main() {
 	}
 
 	orderRepo := repository.NewOrderRepository(db)
-	orderSvc := service.NewOrderService(orderRepo, producer, redisClient)
+	hubResolver := hubs.NewResolver(getEnv("HUB_SERVICE_URL", "http://localhost:8007"))
+	orderSvc := service.NewOrderService(orderRepo, producer, redisClient, hubResolver)
 	orderHandler := handler.NewOrderHandler(orderSvc)
 
 	// Start background workers
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var wg sync.WaitGroup
+
+	// Outbox Worker — drains order lifecycle events (e.g. order.ready-for-pickup) to Kafka
+	outbox.NewWorker(db, producer, 2*time.Second).Start(ctx)
 
 	// SLA Monitor: detect stuck packages (48h no update → LOST_SUSPECTED)
 	wg.Add(1)
@@ -96,6 +102,25 @@ func main() {
 		}
 		logger.Info(context.Background(), fmt.Sprintf("[Order] Received delivery.failed for order=%s (attempt #%d)", evt.OrderID, evt.AttemptNum))
 		return orderSvc.HandleDeliveryFailed(ctx, evt.OrderID, evt.AttemptNum)
+	})
+
+	// Subscribe to package.picked-up → move order to PICKED_UP
+	consumerGroup.Subscribe(ctx, kafkaBrokers, events.TopicPackagePickedUp, "order-service", func(ctx context.Context, key, value []byte) error {
+		var evt events.PackagePickedUpEvent
+		if err := json.Unmarshal(value, &evt); err != nil {
+			return err
+		}
+		logger.Info(context.Background(), fmt.Sprintf("[Order] Received package.picked-up for AWB=%s", evt.AWB))
+		return orderSvc.HandlePackagePickedUp(ctx, evt.AWB)
+	})
+
+	// Subscribe to package.scanned-at-hub → open last-mile job when it reaches the destination hub
+	consumerGroup.Subscribe(ctx, kafkaBrokers, events.TopicPackageScannedHub, "order-service", func(ctx context.Context, key, value []byte) error {
+		var evt events.PackageScannedAtHubEvent
+		if err := json.Unmarshal(value, &evt); err != nil {
+			return err
+		}
+		return orderSvc.HandleHubScan(ctx, evt.AWB, evt.HubID, evt.HubName, evt.ScanType)
 	})
 
 	// Subscribe to package.delivered → mark order as delivered

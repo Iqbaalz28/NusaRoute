@@ -1,7 +1,10 @@
 import { ApiResponse } from './types';
 
-// Use environment variable if available, otherwise fallback to local gateway
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Use environment variable if available, otherwise fallback to local gateway.
+// Nullish (??) not || so an explicit empty string means "same-origin" — the
+// production build sets NEXT_PUBLIC_API_URL="" and the browser calls /api/...
+// relative to whatever host serves the page (Istio routes /api → api-gateway).
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
 export class ApiError extends Error {
   constructor(message: string) {

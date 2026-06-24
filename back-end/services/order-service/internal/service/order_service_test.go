@@ -58,6 +58,22 @@ func (m *MockOrderRepository) UpdateStatus(ctx context.Context, id, status, note
 	return errors.New("not found")
 }
 
+func (m *MockOrderRepository) GetDashboardStats(ctx context.Context) (int64, float64, error) {
+	return int64(len(m.orders)), 100.0, nil
+}
+
+func (m *MockOrderRepository) GetVolumeStats(ctx context.Context) ([]model.DailyVolume, error) {
+	return []model.DailyVolume{}, nil
+}
+
+func (m *MockOrderRepository) ListAll(ctx context.Context, page, perPage int, search string) ([]model.Order, int64, error) {
+	var result []model.Order
+	for _, o := range m.orders {
+		result = append(result, *o)
+	}
+	return result, int64(len(result)), nil
+}
+
 func (m *MockOrderRepository) SetCourier(ctx context.Context, orderID, courierID string) error { return nil }
 
 func (m *MockOrderRepository) IncrementDeliveryAttempts(ctx context.Context, orderID string) error {
@@ -85,7 +101,7 @@ func (m *MockOrderRepository) MarkCancelled(ctx context.Context, id, outboxTopic
 
 func TestCreateOrder_Success(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, err := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", SenderPhone: "08123456789",
@@ -105,7 +121,7 @@ func TestCreateOrder_Success(t *testing.T) {
 
 func TestCreateOrder_MissingSender(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	_, err := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		ReceiverName: "Siti",
@@ -115,7 +131,7 @@ func TestCreateOrder_MissingSender(t *testing.T) {
 
 func TestCancelOrder_Success(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -132,7 +148,7 @@ func TestCancelOrder_Success(t *testing.T) {
 
 func TestCancelOrder_WrongUser(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -146,7 +162,7 @@ func TestCancelOrder_WrongUser(t *testing.T) {
 
 func TestHandleDeliveryFailed_MaxAttempts(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -165,7 +181,7 @@ func TestHandleDeliveryFailed_MaxAttempts(t *testing.T) {
 
 func TestHandleDeliveryFailed_RetryAllowed(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -184,7 +200,7 @@ func TestHandleDeliveryFailed_RetryAllowed(t *testing.T) {
 
 func TestHandlePackageDelivered(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	order, _ := svc.CreateOrder(context.Background(), "user-1", model.CreateOrderRequest{
 		SenderName: "Budi", ReceiverName: "Siti",
@@ -199,9 +215,70 @@ func TestHandlePackageDelivered(t *testing.T) {
 	if delivered.Status != events.OrderStatusDelivered { t.Errorf("expected DELIVERED, got %s", delivered.Status) }
 }
 
+func TestCreateOrder_DeliveryMode(t *testing.T) {
+	repo := NewMockOrderRepo()
+	svc := service.NewOrderService(repo, nil, nil, nil)
+
+	// Instant service within the same city (intra-Jakarta) → DIRECT (skip hub)
+	direct, err := svc.CreateOrder(context.Background(), "u1", model.CreateOrderRequest{
+		SenderName: "A", ReceiverName: "B", SenderAddress: "Jakarta", ReceiverAddress: "Jakarta",
+		ServiceType: "SAMEDAY", SenderLat: -6.2088, SenderLng: 106.8456, ReceiverLat: -6.1751, ReceiverLng: 106.8650,
+		TotalCost: 50000,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if direct.DeliveryMode != "DIRECT" {
+		t.Errorf("instant same-city: expected DIRECT, got %s", direct.DeliveryMode)
+	}
+
+	// Regular service across cities (Jakarta→Bandung) → VIA_HUB
+	hub, _ := svc.CreateOrder(context.Background(), "u1", model.CreateOrderRequest{
+		SenderName: "A", ReceiverName: "B", SenderAddress: "Jakarta", ReceiverAddress: "Bandung",
+		ServiceType: "REGULAR", SenderLat: -6.2088, SenderLng: 106.8456, ReceiverLat: -6.9175, ReceiverLng: 107.6191,
+		TotalCost: 50000,
+	})
+	if hub.DeliveryMode != "VIA_HUB" {
+		t.Errorf("regular intercity: expected VIA_HUB, got %s", hub.DeliveryMode)
+	}
+
+	// Instant service but across cities → still VIA_HUB
+	farInstant, _ := svc.CreateOrder(context.Background(), "u1", model.CreateOrderRequest{
+		SenderName: "A", ReceiverName: "B", SenderAddress: "Jakarta", ReceiverAddress: "Bandung",
+		ServiceType: "SAMEDAY", SenderLat: -6.2088, SenderLng: 106.8456, ReceiverLat: -6.9175, ReceiverLng: 107.6191,
+		TotalCost: 50000,
+	})
+	if farInstant.DeliveryMode != "VIA_HUB" {
+		t.Errorf("instant intercity: expected VIA_HUB, got %s", farInstant.DeliveryMode)
+	}
+}
+
+func TestAdminUpdateStatus(t *testing.T) {
+	repo := NewMockOrderRepo()
+	svc := service.NewOrderService(repo, nil, nil, nil)
+
+	order, _ := svc.CreateOrder(context.Background(), "u1", model.CreateOrderRequest{
+		SenderName: "Budi", ReceiverName: "Siti",
+		SenderAddress: "Bandung", ReceiverAddress: "Jakarta",
+		ServiceType: "REG", TotalCost: 25000,
+	})
+
+	if err := svc.AdminUpdateStatus(context.Background(), order.ID, events.OrderStatusInTransit); err != nil {
+		t.Fatalf("valid status update failed: %v", err)
+	}
+	got, _ := svc.GetOrder(context.Background(), order.ID)
+	if got.Status != events.OrderStatusInTransit {
+		t.Errorf("expected IN_TRANSIT, got %s", got.Status)
+	}
+
+	if err := svc.AdminUpdateStatus(context.Background(), order.ID, "BOGUS_STATUS"); err == nil {
+		t.Error("expected error for invalid status, got nil")
+	}
+}
+
 func TestListOrders_Pagination(t *testing.T) {
 	repo := NewMockOrderRepo()
-	svc := service.NewOrderService(repo, nil)
+	svc := service.NewOrderService(repo, nil, nil, nil)
 
 	// Create multiple orders
 	for i := 0; i < 5; i++ {

@@ -1,0 +1,51 @@
+# Single Istio ingress: one public IP serves both the frontend and the API.
+#   /api/*  → api-gateway:8080   (browser calls same-origin /api/v1/...)
+#   /*      → frontend:3000
+# This is why the frontend image is built with NEXT_PUBLIC_API_URL="" — no
+# rebuild needed when the external IP changes.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: nusaroute-gateway
+  namespace: nusaroute
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: nusaroute
+  namespace: nusaroute
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - nusaroute-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /api
+      route:
+        - destination:
+            host: api-gateway.nusaroute.svc.cluster.local
+            port:
+              number: 8080
+      # Disable the route timeout so Server-Sent Events streams (notifications,
+      # dispatch job board) stay open.
+      timeout: 0s
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: frontend.nusaroute.svc.cluster.local
+            port:
+              number: 3000

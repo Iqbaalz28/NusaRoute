@@ -49,3 +49,8 @@ type CreateClaimRequest struct {
 	ClaimType string  `json:"claim_type"`
 	Amount    float64 `json:"amount"`
 }
+
+type UpdateClaimRequest struct {
+	Status string  `json:"status"` // APPROVED, REJECTED, PAID
+	Amount float64 `json:"amount"`
+}

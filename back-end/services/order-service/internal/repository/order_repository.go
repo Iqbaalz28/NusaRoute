@@ -18,6 +18,7 @@ type OrderRepository interface {
 	GetByID(ctx context.Context, id string) (*model.Order, error)
 	GetByAWB(ctx context.Context, awb string) (*model.Order, error)
 	GetByUserID(ctx context.Context, userID string, page, perPage int) ([]model.Order, int64, error)
+	ListAll(ctx context.Context, page, perPage int, search string) ([]model.Order, int64, error)
 	UpdateStatus(ctx context.Context, id, status, note, createdBy, outboxTopic string, outboxPayload interface{}) error
 	SetCourier(ctx context.Context, orderID, courierID string) error
 	IncrementDeliveryAttempts(ctx context.Context, orderID string) error
@@ -54,6 +55,9 @@ func (r *orderRepo) Create(ctx context.Context, order *model.Order) error {
 	order.CreatedAt = time.Now()
 	order.UpdatedAt = time.Now()
 
+	if order.DeliveryMode == "" {
+		order.DeliveryMode = "VIA_HUB"
+	}
 	query := `
 		INSERT INTO orders (
 			id, awb, user_id, status, service_type,
@@ -61,14 +65,18 @@ func (r *orderRepo) Create(ctx context.Context, order *model.Order) error {
 			receiver_name, receiver_phone, receiver_address, receiver_lat, receiver_lng,
 			item_description, weight_kg, length_cm, width_cm, height_cm,
 			is_insured, insured_value, shipping_cost, insurance_cost, total_cost,
-			delivery_attempts, created_at, updated_at
+			delivery_attempts, created_at, updated_at, delivery_mode,
+			origin_hub_code, origin_hub_name, dest_hub_code, dest_hub_name,
+			pickup_mode, dest_hub_id, sender_city, receiver_city
 		) VALUES (
 			$1, $2, $3, $4, $5,
 			$6, $7, $8, $9, $10,
 			$11, $12, $13, $14, $15,
 			$16, $17, $18, $19, $20,
 			$21, $22, $23, $24, $25,
-			$26, $27, $28
+			$26, $27, $28, $29,
+			$30, $31, $32, $33,
+			$34, $35, $36, $37
 		)
 	`
 	_, err := r.db.ExecContext(ctx, query,
@@ -77,7 +85,9 @@ func (r *orderRepo) Create(ctx context.Context, order *model.Order) error {
 		order.ReceiverName, order.ReceiverPhone, order.ReceiverAddress, order.ReceiverLat, order.ReceiverLng,
 		order.ItemDescription, order.WeightKg, order.LengthCm, order.WidthCm, order.HeightCm,
 		order.IsInsured, order.InsuredValue, order.ShippingCost, order.InsuranceCost, order.TotalCost,
-		order.DeliveryAttempts, order.CreatedAt, order.UpdatedAt,
+		order.DeliveryAttempts, order.CreatedAt, order.UpdatedAt, order.DeliveryMode,
+		order.OriginHubCode, order.OriginHubName, order.DestHubCode, order.DestHubName,
+		order.PickupMode, order.DestHubID, order.SenderCity, order.ReceiverCity,
 	)
 	return err
 }
@@ -119,6 +129,33 @@ func (r *orderRepo) GetByUserID(ctx context.Context, userID string, page, perPag
 	}
 
 	return orders, total, nil
+}
+
+// ListAll returns every order (admin view), newest first, with optional
+// case-insensitive search across AWB / receiver / sender name.
+func (r *orderRepo) ListAll(ctx context.Context, page, perPage int, search string) ([]model.Order, int64, error) {
+	offset := (page - 1) * perPage
+	var total int64
+	var orders []model.Order
+
+	if search != "" {
+		like := "%" + search + "%"
+		if err := r.db.GetContext(ctx, &total,
+			"SELECT COUNT(*) FROM orders WHERE awb ILIKE $1 OR receiver_name ILIKE $1 OR sender_name ILIKE $1", like); err != nil {
+			return nil, 0, err
+		}
+		err := r.db.SelectContext(ctx, &orders,
+			"SELECT * FROM orders WHERE awb ILIKE $1 OR receiver_name ILIKE $1 OR sender_name ILIKE $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+			like, perPage, offset)
+		return orders, total, err
+	}
+
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM orders"); err != nil {
+		return nil, 0, err
+	}
+	err := r.db.SelectContext(ctx, &orders,
+		"SELECT * FROM orders ORDER BY created_at DESC LIMIT $1 OFFSET $2", perPage, offset)
+	return orders, total, err
 }
 
 func (r *orderRepo) UpdateStatus(ctx context.Context, id, status, note, createdBy, outboxTopic string, outboxPayload interface{}) error {

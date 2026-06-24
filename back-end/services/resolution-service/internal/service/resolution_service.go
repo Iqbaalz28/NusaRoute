@@ -25,6 +25,10 @@ type ResolutionService interface {
 
 	CreateClaim(ctx context.Context, claim *model.Claim) error
 	GetClaimByID(ctx context.Context, id string) (*model.Claim, error)
+	ListUserTickets(ctx context.Context, userID string) ([]model.Ticket, error)
+	GetOrderResolution(ctx context.Context, orderID string) ([]model.Ticket, []model.Claim, error)
+	ListClaims(ctx context.Context, status string, page, perPage int) ([]model.Claim, int64, error)
+	UpdateClaim(ctx context.Context, id, status string, amount float64) error
 }
 
 type resolutionService struct {
@@ -131,4 +135,32 @@ func (s *resolutionService) CreateClaim(ctx context.Context, claim *model.Claim)
 
 func (s *resolutionService) GetClaimByID(ctx context.Context, id string) (*model.Claim, error) {
 	return s.repo.GetClaimByID(ctx, id)
+}
+
+func (s *resolutionService) ListUserTickets(ctx context.Context, userID string) ([]model.Ticket, error) {
+	return s.repo.ListTicketsByUser(ctx, userID)
+}
+
+// GetOrderResolution returns all tickets and claims for one order — powers the
+// customer's "Bantuan & Klaim" panel on the order detail.
+func (s *resolutionService) GetOrderResolution(ctx context.Context, orderID string) ([]model.Ticket, []model.Claim, error) {
+	tickets, err := s.repo.GetTicketsByOrderID(ctx, orderID)
+	if err != nil {
+		return nil, nil, err
+	}
+	claims, err := s.repo.GetClaimsByOrderID(ctx, orderID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tickets, claims, nil
+}
+
+func (s *resolutionService) ListClaims(ctx context.Context, status string, page, perPage int) ([]model.Claim, int64, error) {
+	return s.repo.ListClaims(ctx, status, page, perPage)
+}
+
+// UpdateClaim transitions a claim (admin): APPROVED, REJECTED, or PAID, optionally
+// adjusting the payout amount. PAID is the insurance disbursement.
+func (s *resolutionService) UpdateClaim(ctx context.Context, id, status string, amount float64) error {
+	return s.repo.UpdateClaim(ctx, id, status, amount)
 }

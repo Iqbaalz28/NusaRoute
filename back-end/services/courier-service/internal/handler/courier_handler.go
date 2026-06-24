@@ -18,6 +18,7 @@ func NewCourierHandler(svc service.CourierService) *CourierHandler { return &Cou
 
 func (h *CourierHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/couriers/register", h.Register)
+	mux.HandleFunc("POST /api/v1/couriers/ensure", h.Ensure)
 	mux.HandleFunc("PUT /api/v1/couriers/status", h.UpdateStatus)
 	mux.HandleFunc("PUT /api/v1/couriers/location", h.UpdateLocation)
 	mux.HandleFunc("GET /api/v1/couriers/available", h.GetAvailable)
@@ -41,6 +42,22 @@ func (h *CourierHandler) Register(w http.ResponseWriter, r *http.Request) {
 	courier, err := h.svc.Register(r.Context(), req)
 	if err != nil { response.BadRequest(w, err.Error()); return }
 	response.Created(w, "courier registered", courier)
+}
+
+func (h *CourierHandler) Ensure(w http.ResponseWriter, r *http.Request) {
+	var req model.EnsureCourierRequest
+	_ = json.NewDecoder(r.Body).Decode(&req) // body is optional
+	userID := middleware.GetUserID(r.Context())
+	if userID == "" {
+		response.BadRequest(w, "unauthenticated")
+		return
+	}
+	courier, err := h.svc.Ensure(r.Context(), userID, req)
+	if err != nil {
+		response.BadRequest(w, err.Error())
+		return
+	}
+	response.Success(w, "courier ready", courier)
 }
 
 func (h *CourierHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {

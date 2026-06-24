@@ -16,8 +16,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/nusaroute/pkg/database"
+	"github.com/nusaroute/pkg/events"
 	"github.com/nusaroute/pkg/kafka"
 	"github.com/nusaroute/pkg/middleware"
+	"github.com/nusaroute/pkg/outbox"
 	"github.com/nusaroute/pkg/response"
 	"github.com/nusaroute/services/hub-service/internal/model"
 	"github.com/nusaroute/services/hub-service/internal/repository"
@@ -50,6 +52,29 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var wg sync.WaitGroup
+
+	// Outbox Worker — drains hub scan events (package.scanned-at-hub) to Kafka
+	outbox.NewWorker(db, producer, 2*time.Second).Start(ctx)
+
+	// Mirror scans emitted by OTHER services (e.g. dispatch's last-mile DEPARTED
+	// when a courier collects from the hub) into scan_logs so the hub's current
+	// inventory stays accurate. Skip our own events to avoid a write loop.
+	consumerGroup := kafka.NewConsumerGroup()
+	consumerGroup.Subscribe(ctx, kafkaBrokers, events.TopicPackageScannedHub, "hub-service",
+		func(ctx context.Context, key, value []byte) error {
+			var evt events.PackageScannedAtHubEvent
+			if err := json.Unmarshal(value, &evt); err != nil {
+				return err
+			}
+			if evt.Source == "hub-service" || evt.HubID == "" {
+				return nil // our own scan (already stored) or no hub context
+			}
+			return hubRepo.RecordScan(ctx, &model.ScanLog{
+				AWB: evt.AWB, OrderID: evt.OrderID, HubID: evt.HubID,
+				ScanType: evt.ScanType, OperatorID: evt.OperatorID, ScannedAt: evt.Timestamp,
+			})
+		})
+	defer consumerGroup.CloseAll()
 
 	// Start Stateful Stream Processor (Tumbling Window)
 	windowSize := 60 * time.Second // 1 minute tumbling window
@@ -114,6 +139,17 @@ func main() {
 		}
 		response.Success(w, "manifest retrieved", manifest)
 	})
+	// Packages currently inside a hub (arrived/sorted but not yet departed).
+	mux.HandleFunc("GET /api/v1/hub/inventory/", func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(r.URL.Path, "/")
+		hubID := parts[len(parts)-1]
+		inv, err := hubSvc.GetCurrentInventory(r.Context(), hubID)
+		if err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
+		response.Success(w, "inventory retrieved", inv)
+	})
 	mux.HandleFunc("GET /api/v1/hub/list", func(w http.ResponseWriter, r *http.Request) {
 		hubs, err := hubSvc.ListHubs(r.Context())
 		if err != nil {
@@ -121,6 +157,41 @@ func main() {
 			return
 		}
 		response.Success(w, "hubs retrieved", hubs)
+	})
+	// --- Admin hub management (gated to ADMIN at the gateway) ---
+	mux.HandleFunc("GET /api/v1/hub/manage", func(w http.ResponseWriter, r *http.Request) {
+		hubs, err := hubSvc.ListAllHubs(r.Context())
+		if err != nil {
+			response.InternalError(w, err.Error())
+			return
+		}
+		response.Success(w, "all hubs retrieved", hubs)
+	})
+	mux.HandleFunc("POST /api/v1/hub/manage", func(w http.ResponseWriter, r *http.Request) {
+		var req model.HubUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		hub, err := hubSvc.CreateHub(r.Context(), req)
+		if err != nil {
+			response.BadRequest(w, err.Error())
+			return
+		}
+		response.Created(w, "hub created", hub)
+	})
+	mux.HandleFunc("PUT /api/v1/hub/manage/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req model.HubUpsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			response.BadRequest(w, "invalid body")
+			return
+		}
+		hub, err := hubSvc.UpdateHub(r.Context(), r.PathValue("id"), req)
+		if err != nil {
+			response.BadRequest(w, err.Error())
+			return
+		}
+		response.Success(w, "hub updated", hub)
 	})
 	mux.HandleFunc("GET /api/v1/hub/stats", func(w http.ResponseWriter, r *http.Request) {
 		activeHubs, totalCities, err := hubSvc.GetDashboardStats(r.Context())

@@ -36,10 +36,12 @@ export const TrackingPage: React.FC<TrackingPageProps> = ({ initialAwb }) => {
     setError("");
     
     try {
-      const res = await apiGet<TrackingEvent[]>(`/api/v1/tracking/${trackAwb}`);
-      if (res && res.length > 0) {
-        // Sort descending by time
-        const sorted = res.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      // The API returns a timeline object: { awb, status, events: [...] }.
+      const res = await apiGet<{ events?: TrackingEvent[] }>(`/api/v1/tracking/${trackAwb}`);
+      const evs = res?.events ?? [];
+      if (evs.length > 0) {
+        // Sort descending by time (most recent first)
+        const sorted = [...evs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         setEvents(sorted);
         setShowResult(true);
       } else {

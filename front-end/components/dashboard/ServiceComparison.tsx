@@ -4,7 +4,11 @@ import React, { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { ServiceInfo } from "@/lib/types";
 
-export const ServiceComparison = () => {
+interface ServiceComparisonProps {
+  onNavigate?: (page: string) => void;
+}
+
+export const ServiceComparison: React.FC<ServiceComparisonProps> = ({ onNavigate }) => {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -61,9 +65,13 @@ export const ServiceComparison = () => {
                 <h3 className="text-[1.75rem] font-bold mb-5">{s.name}</h3>
                 <p className="text-muted text-base mb-10 flex-1 leading-relaxed">{s.description}</p>
                 <div className="text-sm font-bold text-gray-400 mb-4">Estimasi: {s.estimated_days}</div>
-                <a href="/services" className="font-heading font-semibold text-primary text-[1.1rem] flex items-center gap-2 group mt-auto">
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.("services")}
+                  className="font-heading font-semibold text-primary text-[1.1rem] flex items-center gap-2 group mt-auto cursor-pointer"
+                >
                   Pelajari selengkapnya <span className="transition-transform group-hover:translate-x-1">→</span>
-                </a>
+                </button>
               </div>
             );
           })

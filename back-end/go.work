@@ -3,6 +3,7 @@ go 1.25.0
 use (
 	./api-gateway
 	./pkg
+	./services/analytics-service
 	./services/courier-service
 	./services/dispatch-service
 	./services/hub-service

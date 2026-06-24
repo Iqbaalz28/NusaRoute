@@ -84,6 +84,16 @@ func (m *MockCourierRepository) IncrementDeliveries(ctx context.Context, id stri
 	return errors.New("not found")
 }
 
+func (m *MockCourierRepository) GetDashboardStats(ctx context.Context) (int64, error) {
+	var count int64
+	for _, c := range m.couriers {
+		if c.IsOnline {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func TestRegisterCourier_Success(t *testing.T) {
 	repo := NewMockCourierRepo()
 	svc := service.NewCourierService(repo)

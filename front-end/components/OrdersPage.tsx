@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { apiGet } from "@/lib/api";
 import { Order } from "@/lib/types";
+import { OrderDetailModal } from "./OrderDetailModal";
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -17,30 +19,34 @@ export const OrdersPage = () => {
   const [filter, setFilter] = useState("SEMUA");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<{ awb: string; id: string; statusLabel: string } | null>(null);
+  const [detail, setDetail] = useState<{ orderId: string; awb: string } | null>(null);
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const res = await apiGet<PaginatedResponse<Order>>('/api/v1/orders', { requiresAuth: true });
-        // The API returns PaginatedResponse, but our apiGet returns the payload directly if envelope is used
-        // Let's handle both in case apiGet unpacks the 'data' field.
-        const orderData = Array.isArray(res) ? res : (res as any)?.data || [];
-        setOrders(orderData);
-      } catch (err) {
-        console.error("Failed to load orders:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchOrders();
+  const fetchOrders = useCallback(async () => {
+    try {
+      const res = await apiGet<PaginatedResponse<Order>>('/api/v1/orders', { requiresAuth: true });
+      // The API returns PaginatedResponse, but our apiGet returns the payload directly if envelope is used
+      // Let's handle both in case apiGet unpacks the 'data' field.
+      const orderData = Array.isArray(res) ? res : (res as any)?.data || [];
+      setOrders(orderData);
+    } catch (err) {
+      console.error("Failed to load orders:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
   // Use a fallback for destination/service if missing, based on standard format
   const mappedOrders = orders.map(o => {
     return {
       id: o.id.substring(0, 12).toUpperCase(),
+      realId: o.id,
+      awb: o.awb,
       date: new Date(o.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
-      destination: o.receiver_address?.split(',')[0] || "Unknown", // Simplified destination
+      destination: o.receiver_city || o.receiver_address?.split(',')[0] || "Unknown",
+      route: `${o.sender_city || "-"} → ${o.receiver_city || "-"}`,
       service: o.service_type === 'EXPRESS' ? '⚡ Ekspres' : o.service_type === 'CARGO' ? '📦 Kargo' : '🚚 Standar',
       price: `Rp ${o.total_cost.toLocaleString('id-ID')}`,
       status: o.status,
@@ -116,7 +122,20 @@ export const OrdersPage = () => {
                       </span>
                     </td>
                     <td className="p-6">
-                      <button className="text-primary font-bold text-[0.85rem] hover:underline">Detail</button>
+                      <div className="flex gap-3">
+                        <button
+                          className="text-primary font-bold text-[0.85rem] hover:underline"
+                          onClick={() => setDetail({ orderId: o.realId, awb: o.awb })}
+                        >
+                          {o.status === "PENDING_PAYMENT" ? "Bayar / Detail" : "Detail"}
+                        </button>
+                        <button
+                          className="text-muted font-bold text-[0.85rem] hover:underline hover:text-text"
+                          onClick={() => setSelected({ awb: o.awb, id: o.id, statusLabel: o.statusLabel })}
+                        >
+                          Label QR
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -125,6 +144,57 @@ export const OrdersPage = () => {
           </div>
         )}
       </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-text/40 backdrop-blur-md" onClick={() => setSelected(null)}></div>
+          <div className="bg-surface w-full max-w-[400px] rounded-[32px] p-10 relative z-10 shadow-hover animate-fade-up text-center">
+            <button onClick={() => setSelected(null)} className="absolute top-6 right-7 text-muted hover:text-text text-2xl leading-none">×</button>
+            <h2 className="text-xl font-bold mb-1">Label Pengiriman</h2>
+            <p className="text-muted text-[0.85rem] mb-6">Scan QR ini di Konsol Scan Hub.</p>
+            <div className="bg-white p-4 rounded-2xl inline-block border border-border mb-5">
+              <QRCodeSVG value={selected.awb} size={180} level="M" />
+            </div>
+            <div className="text-[0.8rem] text-muted font-medium">Nomor Resi (AWB)</div>
+            <div className="text-xl font-black tracking-wide text-primary">{selected.awb}</div>
+            <div className="text-[0.85rem] text-muted mt-2">Status: <strong>{selected.statusLabel}</strong></div>
+            {(() => {
+              const o = orders.find((x) => x.awb === selected.awb);
+              if (!o) return null;
+              return (
+                <div className="mt-5 pt-5 border-t border-border text-left text-[0.85rem] space-y-2">
+                  {(o.sender_city || o.receiver_city) && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">Kota</span>
+                      <span className="font-black text-primary text-right">{o.sender_city || "-"} → {o.receiver_city || "-"}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted">Pengirim → Penerima</span>
+                    <span className="font-semibold text-right">{o.sender_name} → {o.receiver_name}</span>
+                  </div>
+                  {(o.origin_hub_name || o.dest_hub_name) && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">Hub Asal → Tujuan</span>
+                      <span className="font-semibold text-right">
+                        {(o.origin_hub_name || "-")}{o.origin_hub_code ? ` (${o.origin_hub_code})` : ""} → {(o.dest_hub_name || "-")}{o.dest_hub_code ? ` (${o.dest_hub_code})` : ""}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {detail && (
+        <OrderDetailModal
+          orderId={detail.orderId}
+          awb={detail.awb}
+          onClose={() => { setDetail(null); fetchOrders(); }}
+        />
+      )}
     </section>
   );
 };

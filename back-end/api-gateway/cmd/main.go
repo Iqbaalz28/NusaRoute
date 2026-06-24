@@ -27,13 +27,14 @@ import (
 type ServiceRoute struct {
 	Prefix    string
 	TargetURL string
-	Public    bool // if true, skip JWT validation
+	Public    bool     // if true, skip JWT validation
+	Roles     []string // if set, require one of these roles (implies JWT)
 }
 
 // RedisRateLimiter implements a fixed-window rate limiter using Redis.
 type RedisRateLimiter struct {
 	client *redis.Client
-	rate   int           // allowed requests per window
+	rate   int // allowed requests per window
 	window time.Duration
 }
 
@@ -51,7 +52,7 @@ func (rl *RedisRateLimiter) Allow(ip string) bool {
 	}
 	windowKey := time.Now().Unix() / int64(rl.window.Seconds())
 	key := fmt.Sprintf("ratelimit:%s:%d", ip, windowKey)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -87,11 +88,12 @@ func main() {
 		{Prefix: "/api/v1/pricing", TargetURL: getEnv("PRICING_SERVICE_URL", "http://localhost:8003"), Public: true},
 		{Prefix: "/api/v1/orders", TargetURL: getEnv("ORDER_SERVICE_URL", "http://localhost:8004"), Public: false},
 		{Prefix: "/api/v1/couriers", TargetURL: getEnv("COURIER_SERVICE_URL", "http://localhost:8005"), Public: false},
-		{Prefix: "/api/v1/dispatch", TargetURL: getEnv("DISPATCH_SERVICE_URL", "http://localhost:8006"), Public: false},
-		{Prefix: "/api/v1/hub", TargetURL: getEnv("HUB_SERVICE_URL", "http://localhost:8007"), Public: false},
+		{Prefix: "/api/v1/dispatch", TargetURL: getEnv("DISPATCH_SERVICE_URL", "http://localhost:8006"), Public: false, Roles: []string{"COURIER", "ADMIN"}},
+		{Prefix: "/api/v1/hub", TargetURL: getEnv("HUB_SERVICE_URL", "http://localhost:8007"), Public: true},
 		{Prefix: "/api/v1/tracking", TargetURL: getEnv("TRACKING_SERVICE_URL", "http://localhost:8008"), Public: true},
 		{Prefix: "/api/v1/notifications", TargetURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8009"), Public: false},
 		{Prefix: "/api/v1/resolutions", TargetURL: getEnv("RESOLUTION_SERVICE_URL", "http://localhost:8010"), Public: false},
+		{Prefix: "/api/v1/analytics", TargetURL: getEnv("ANALYTICS_SERVICE_URL", "http://localhost:8011"), Public: false, Roles: []string{"ADMIN"}},
 	}
 
 	redisClient, err := database.ConnectRedis(database.RedisConfig{
@@ -122,9 +124,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			resp, err := client.Get(getEnv("ORDER_SERVICE_URL", "http://localhost:8004") + "/api/v1/orders/stats")
-			if err == nil { defer resp.Body.Close() }
+			if err == nil {
+				defer resp.Body.Close()
+			}
 			if err == nil && resp.StatusCode == http.StatusOK {
-				var res struct { Data map[string]interface{} `json:"data"` }
+				var res struct {
+					Data map[string]interface{} `json:"data"`
+				}
 				json.NewDecoder(resp.Body).Decode(&res)
 				orderStats = res.Data
 			}
@@ -134,9 +140,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			resp, err := client.Get(getEnv("COURIER_SERVICE_URL", "http://localhost:8005") + "/api/v1/couriers/stats")
-			if err == nil { defer resp.Body.Close() }
+			if err == nil {
+				defer resp.Body.Close()
+			}
 			if err == nil && resp.StatusCode == http.StatusOK {
-				var res struct { Data map[string]interface{} `json:"data"` }
+				var res struct {
+					Data map[string]interface{} `json:"data"`
+				}
 				json.NewDecoder(resp.Body).Decode(&res)
 				courierStats = res.Data
 			}
@@ -146,9 +156,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			resp, err := client.Get(getEnv("HUB_SERVICE_URL", "http://localhost:8007") + "/api/v1/hub/stats")
-			if err == nil { defer resp.Body.Close() }
+			if err == nil {
+				defer resp.Body.Close()
+			}
 			if err == nil && resp.StatusCode == http.StatusOK {
-				var res struct { Data map[string]interface{} `json:"data"` }
+				var res struct {
+					Data map[string]interface{} `json:"data"`
+				}
 				json.NewDecoder(resp.Body).Decode(&res)
 				hubStats = res.Data
 			}
@@ -187,13 +201,15 @@ func main() {
 			return
 		}
 		defer resp.Body.Close()
-		
+
 		if resp.StatusCode != http.StatusOK {
 			response.InternalError(w, "failed to fetch volume stats")
 			return
 		}
 
-		var res struct { Data interface{} `json:"data"` }
+		var res struct {
+			Data interface{} `json:"data"`
+		}
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 			response.InternalError(w, err.Error())
 			return
@@ -202,10 +218,11 @@ func main() {
 		response.Success(w, "dashboard volume retrieved", res.Data)
 	})))
 
-	for _, route := range routes {
-		route := route // capture loop var
-		var proxyHandler http.Handler
-		proxyHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// makeProxyHandler builds a rate-limited reverse-proxy handler for a target
+	// service URL. Shared by the generic route loop and by routes that need a
+	// different auth policy than their parent prefix (e.g. hub scan).
+	makeProxyHandler := func(targetURL string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Rate limiting
 			ip := strings.Split(r.RemoteAddr, ":")[0]
 			if !rateLimiter.Allow(ip) {
@@ -213,7 +230,7 @@ func main() {
 				return
 			}
 
-			target, err := url.Parse(route.TargetURL)
+			target, err := url.Parse(targetURL)
 			if err != nil {
 				http.Error(w, `{"error":"bad gateway"}`, http.StatusBadGateway)
 				return
@@ -227,15 +244,60 @@ func main() {
 					KeepAlive: 30 * time.Second,
 				}).DialContext,
 			}
+			proxy.ModifyResponse = func(resp *http.Response) error {
+				resp.Header.Del("Access-Control-Allow-Origin")
+				resp.Header.Del("Access-Control-Allow-Methods")
+				resp.Header.Del("Access-Control-Allow-Headers")
+				return nil
+			}
 			proxy.ServeHTTP(w, r)
 		})
+	}
 
-		// Apply JWT Auth only if the route is not public
-		if !route.Public {
+	// Hub scan endpoints require a hub operator (or admin) even though the rest of
+	// /api/v1/hub (list, stats, manifest) stays public for the dashboard.
+	// Registered as a more specific prefix so ServeMux longest-prefix match routes
+	// scans through JWT + role enforcement.
+	mux.Handle("/api/v1/hub/scan/", mw.JWTAuth(jwtSecret)(mw.RequireRole("HUB_OPERATOR", "ADMIN")(
+		makeProxyHandler(getEnv("HUB_SERVICE_URL", "http://localhost:8007")))))
+
+	// Hub management (create/update/list-all incl inactive) is ADMIN-only. More
+	// specific than /api/v1/hub so ServeMux routes it here for role enforcement.
+	hubManage := mw.JWTAuth(jwtSecret)(mw.RequireRole("ADMIN")(
+		makeProxyHandler(getEnv("HUB_SERVICE_URL", "http://localhost:8007"))))
+	mux.Handle("/api/v1/hub/manage/", hubManage)
+	mux.Handle("/api/v1/hub/manage", hubManage)
+
+	// Resolution admin endpoints (ticket triage, claim approval/payout) are
+	// ADMIN-only; more specific than the JWT-only /api/v1/resolutions prefix.
+	resolutionAdmin := mw.JWTAuth(jwtSecret)(mw.RequireRole("ADMIN")(
+		makeProxyHandler(getEnv("RESOLUTION_SERVICE_URL", "http://localhost:8010"))))
+	mux.Handle("/api/v1/resolutions/admin/", resolutionAdmin)
+
+	// Admin-only order endpoints. These are more specific than the generic
+	// /api/v1/orders prefix (which customers use to create/list/cancel their own
+	// orders), so ServeMux routes them here for ADMIN-only enforcement.
+	adminOrders := mw.JWTAuth(jwtSecret)(mw.RequireRole("ADMIN")(
+		makeProxyHandler(getEnv("ORDER_SERVICE_URL", "http://localhost:8004"))))
+	mux.Handle("/api/v1/orders/all", adminOrders)
+	mux.Handle("/api/v1/orders/status", adminOrders)
+
+	for _, route := range routes {
+		route := route // capture loop var
+		proxyHandler := makeProxyHandler(route.TargetURL)
+
+		// Role check runs inside JWT auth so the role is already in context.
+		if len(route.Roles) > 0 {
+			proxyHandler = mw.RequireRole(route.Roles...)(proxyHandler)
+		}
+
+		// Apply JWT Auth only if the route is not public (role check implies JWT).
+		if !route.Public || len(route.Roles) > 0 {
 			proxyHandler = mw.JWTAuth(jwtSecret)(proxyHandler)
 		}
 
 		mux.Handle(route.Prefix+"/", proxyHandler)
+		mux.Handle(route.Prefix, proxyHandler) // Daftarkan juga rute tanpa slash
 	}
 
 	// Apply global middleware chain

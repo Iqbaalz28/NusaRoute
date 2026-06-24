@@ -1,4 +1,4 @@
-version: "3.9"
+
 
 services:
   # ============================================================
@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: nusaroute_user
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
@@ -154,6 +154,7 @@ services:
       - TRACKING_SERVICE_URL=http://tracking-service:8008
       - NOTIFICATION_SERVICE_URL=http://notification-service:8009
       - RESOLUTION_SERVICE_URL=http://resolution-service:8010
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8011
     depends_on:
       - user-service
       - payment-service
@@ -165,13 +166,16 @@ services:
       - tracking-service
       - notification-service
       - resolution-service
+      - analytics-service
     networks:
       - nusaroute-net
 
   user-service:
     build:
       context: .
-      dockerfile: services/user-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: user-service
     container_name: nusaroute-user-service
     ports:
       - "8001:8001"
@@ -197,7 +201,9 @@ services:
   payment-service:
     build:
       context: .
-      dockerfile: services/payment-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: payment-service
     container_name: nusaroute-payment-service
     ports:
       - "8002:8002"
@@ -220,7 +226,9 @@ services:
   pricing-service:
     build:
       context: .
-      dockerfile: services/pricing-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: pricing-service
     container_name: nusaroute-pricing-service
     ports:
       - "8003:8003"
@@ -244,7 +252,9 @@ services:
   order-service:
     build:
       context: .
-      dockerfile: services/order-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: order-service
     container_name: nusaroute-order-service
     ports:
       - "8004:8004"
@@ -256,6 +266,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=nusaroute_order
       - KAFKA_BROKERS=kafka:29092
+      - HUB_SERVICE_URL=http://hub-service:8007
     depends_on:
       postgres:
         condition: service_healthy
@@ -267,7 +278,9 @@ services:
   courier-service:
     build:
       context: .
-      dockerfile: services/courier-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: courier-service
     container_name: nusaroute-courier-service
     ports:
       - "8005:8005"
@@ -288,7 +301,9 @@ services:
   dispatch-service:
     build:
       context: .
-      dockerfile: services/dispatch-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: dispatch-service
     container_name: nusaroute-dispatch-service
     ports:
       - "8006:8006"
@@ -303,6 +318,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - KAFKA_BROKERS=kafka:29092
       - COURIER_SERVICE_URL=http://courier-service:8005
+      - COURIER_GRPC_TARGET=courier-service:9005
     depends_on:
       postgres:
         condition: service_healthy
@@ -314,7 +330,9 @@ services:
   hub-service:
     build:
       context: .
-      dockerfile: services/hub-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: hub-service
     container_name: nusaroute-hub-service
     ports:
       - "8007:8007"
@@ -337,7 +355,9 @@ services:
   tracking-service:
     build:
       context: .
-      dockerfile: services/tracking-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: tracking-service
     container_name: nusaroute-tracking-service
     ports:
       - "8008:8008"
@@ -361,7 +381,9 @@ services:
   notification-service:
     build:
       context: .
-      dockerfile: services/notification-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: notification-service
     container_name: nusaroute-notification-service
     ports:
       - "8009:8009"
@@ -370,6 +392,7 @@ services:
       - MONGO_URI=mongodb://nusaroute:${MONGO_PASSWORD}@mongodb:27017
       - MONGO_DB=nusaroute_notification
       - KAFKA_BROKERS=kafka:29092
+      - ORDER_SERVICE_URL=http://order-service:8004
     depends_on:
       mongodb:
         condition: service_healthy
@@ -378,10 +401,34 @@ services:
     networks:
       - nusaroute-net
 
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: analytics-service
+    container_name: nusaroute-analytics-service
+    ports:
+      - "8011:8011"
+    environment:
+      - PORT=8011
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=nusaroute
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=nusaroute_warehouse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nusaroute-net
+
   resolution-service:
     build:
       context: .
-      dockerfile: services/resolution-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: resolution-service
     container_name: nusaroute-resolution-service
     ports:
       - "8010:8010"

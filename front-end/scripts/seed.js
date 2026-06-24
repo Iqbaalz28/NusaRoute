@@ -16,12 +16,12 @@ async function seedData() {
       body: JSON.stringify({
         email: 'demo@nusaroute.com',
         password: 'password123',
-        first_name: 'Budi',
-        last_name: 'Santoso'
+        full_name: 'Budi Santoso'
       })
     });
     
     let token = '';
+    let userId = '';
     
     if (userRes.ok) {
       const data = await userRes.json();
@@ -37,25 +37,30 @@ async function seedData() {
       });
       const loginData = await loginRes.json();
       token = loginData.data.token;
-    } else if (userRes.status === 409) {
-      console.log('ℹ️ User sudah ada. Melakukan login...');
-      const loginRes = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'demo@nusaroute.com',
-          password: 'password123'
-        })
-      });
-      if (loginRes.ok) {
-        const loginData = await loginRes.json();
-        token = loginData.data.token;
+      userId = loginData.data.user.id;
+    } else if (userRes.status === 409 || (userRes.status === 400)) {
+      const errorBody = await userRes.text();
+      if (errorBody.includes('already registered') || userRes.status === 409) {
+        console.log('ℹ️ User sudah ada. Melakukan login...');
+        const loginRes = await fetch(`${API_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'demo@nusaroute.com',
+            password: 'password123'
+          })
+        });
+        if (loginRes.ok) {
+          const loginData = await loginRes.json();
+          token = loginData.data.token;
+          userId = loginData.data.user.id;
+        } else {
+          throw new Error('Gagal login user demo');
+        }
       } else {
-        throw new Error('Gagal login user demo');
+        console.log(errorBody);
+        throw new Error(`Gagal membuat user: ${userRes.status}`);
       }
-    } else {
-      console.log(await userRes.text());
-      throw new Error(`Gagal membuat user: ${userRes.status}`);
     }
 
     console.log('🔑 Token otentikasi didapatkan.');
@@ -138,11 +143,12 @@ async function seedData() {
     const createdOrders = [];
     
     for (const order of ordersToCreate) {
-      const orderRes = await fetch(`${API_URL}/orders`, {
+      let orderRes = await fetch('http://localhost:8004/api/v1/orders', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'X-User-ID': userId
         },
         body: JSON.stringify(order)
       });
@@ -167,7 +173,7 @@ async function seedData() {
     // 4. Bulk Seeding via Go Script
     console.log('\n[4/5] Melakukan seeding data agregasi ke Database (Go Script)...');
     try {
-      execSync('go run ../back-end/scripts/seed.go', { stdio: 'inherit' });
+      execSync('go run seed.go', { cwd: '../back-end/scripts', stdio: 'inherit' });
       console.log('✅ Bulk seeding Database selesai.');
     } catch (e) {
       console.error('❌ Gagal menjalankan script Go bulk seeding. Pastikan Go terinstall dan database menyala.', e.message);

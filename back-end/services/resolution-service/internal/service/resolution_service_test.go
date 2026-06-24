@@ -79,6 +79,45 @@ func (m *MockResolutionRepository) GetClaimByID(ctx context.Context, id string) 
 	return nil, errors.New("not found")
 }
 
+func (m *MockResolutionRepository) ListTicketsByUser(ctx context.Context, userID string) ([]model.Ticket, error) {
+	var out []model.Ticket
+	for _, t := range m.tickets {
+		if t.UserID == userID {
+			out = append(out, *t)
+		}
+	}
+	return out, nil
+}
+
+func (m *MockResolutionRepository) GetClaimsByOrderID(ctx context.Context, orderID string) ([]model.Claim, error) {
+	var out []model.Claim
+	for _, c := range m.claims {
+		if c.OrderID == orderID {
+			out = append(out, *c)
+		}
+	}
+	return out, nil
+}
+
+func (m *MockResolutionRepository) ListClaims(ctx context.Context, status string, page, perPage int) ([]model.Claim, int64, error) {
+	var out []model.Claim
+	for _, c := range m.claims {
+		if status == "" || c.Status == status {
+			out = append(out, *c)
+		}
+	}
+	return out, int64(len(out)), nil
+}
+
+func (m *MockResolutionRepository) UpdateClaim(ctx context.Context, id, status string, amount float64) error {
+	if c, ok := m.claims[id]; ok {
+		c.Status = status
+		c.Amount = amount
+		return nil
+	}
+	return errors.New("not found")
+}
+
 func TestAutoCreateDeliveryFailedTicket(t *testing.T) {
 	repo := NewMockResolutionRepo()
 	svc := service.NewResolutionService(repo, nil)
