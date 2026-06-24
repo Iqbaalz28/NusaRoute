@@ -78,7 +78,8 @@ graph TD
 
 ### DevOps & Infrastructure
 - **Containerization:** Docker, Docker Compose
-- **Orchestration:** Kubernetes (Deployment, ConfigMap, HPA)
+- **Orchestration:** Kubernetes (Azure AKS, HPA, Istio)
+- **Infrastructure as Code (IaC):** Terraform
 - **CI/CD:** Jenkins
 - **Observability:** Prometheus, Grafana, Zap Logger
 
@@ -100,6 +101,7 @@ Setiap microservice memiliki **multiple API endpoints** sesuai prinsip desain mi
 | **Tracking Service** | 8008 | MongoDB | 4 API + 5 Kafka | Ledger posisi paket *real-time*, GPS tracking, timeline. |
 | **Notification Service**| 8009 | MongoDB | 3 API + 6 Kafka | Pengiriman Email/WA/Push asinkron via *worker pool*. |
 | **Resolution Service** | 8010 | PostgreSQL | 7 API + 3 Kafka | *Ticketing* pelanggan otomatis, klaim asuransi. |
+| **Analytics Service** | 8011 | PostgreSQL | 10 API | Data Warehouse OLAP & Machine Learning Predictions. |
 
 ### Detail Endpoint per Service
 
@@ -251,6 +253,24 @@ Setiap microservice memiliki **multiple API endpoints** sesuai prinsip desain mi
 | Kafka | `delivery.failed` | Consumer | Auto-create tiket gagal kirim |
 | Kafka | `package.lost` | Consumer | Auto-create tiket & klaim hilang |
 | Kafka | `package.damaged` | Consumer | Auto-create tiket rusak |
+
+</details>
+
+<details>
+<summary>📋 <b>Analytics Service</b> — 10 Endpoints</summary>
+
+| Method | Endpoint | Auth | Deskripsi |
+|--------|----------|------|-----------|
+| `GET` | `/api/v1/analytics/overview` | Internal | Agregat overview pengiriman |
+| `GET` | `/api/v1/analytics/monthly` | Internal | Tren pengiriman bulanan |
+| `GET` | `/api/v1/analytics/by-province` | Internal | Metrik performa per provinsi |
+| `GET` | `/api/v1/analytics/by-service` | Internal | Metrik per tipe layanan |
+| `GET` | `/api/v1/analytics/by-status` | Internal | Agregat berdasarkan status paket |
+| `GET` | `/api/v1/analytics/driver` | Internal | Performa rata-rata pengemudi |
+| `GET` | `/api/v1/analytics/ml/forecast` | Internal | Prediksi volume paket (ML) |
+| `GET` | `/api/v1/analytics/ml/segments` | Internal | Klasterisasi area (ML) |
+| `GET` | `/api/v1/analytics/ml/risk` | Internal | Analisis risiko keterlambatan (ML) |
+| `GET` | `/api/v1/analytics/health` | Public | Health check |
 
 </details>
 
@@ -625,6 +645,9 @@ Kami telah menyediakan script otomatis untuk memastikan pembuatan namespace sele
   .\back-end\deployments\k8s\deploy.ps1
   ```
 
+### 5. Deployment ke Azure (Terraform)
+Proyek ini sekarang mendukung *Infrastructure as Code* menggunakan Terraform untuk melakukan *provisioning* AKS (Azure Kubernetes Service) dan komponen cloud lainnya. Berkas konfigurasi terdapat di `infrastructure/terraform/azure/`.
+
 
 ---
 
@@ -647,7 +670,7 @@ NusaRoute/
 ├── back-end/                    # Go Workspace (Microservices)
 │   ├── api-gateway/             # API Gateway (BFF, Aggregator, Rate Limiter)
 │   ├── pkg/                     # Shared Libs (Kafka, DB, Outbox, Redis Lock)
-│   ├── services/                # 10 Microservices
+│   ├── services/                # 11 Microservices
 │   ├── scripts/                 # SQL Init Script & seed.go (Bulk Seeder)
 │   ├── deployments/k8s/         # Kubernetes Manifests
 │   └── docker-compose.yml       # Orchestrator lokal
